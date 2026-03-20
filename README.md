@@ -61,6 +61,11 @@ What it does:
 - Runs `tests/smoke_test.py` and prints pass/fail results.
 - Stops the API automatically.
 
+## API usage docs
+
+- Developer usage guide: `docs/api/developer-usage.md`
+- Contract reference: `docs/api/monitoring-events-v1.md`
+
 ## Next implementation targets
 
 - Add acknowledge and silence workflow.
