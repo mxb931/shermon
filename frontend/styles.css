@@ -1,0 +1,148 @@
+:root {
+  --bg: #f5f2ea;
+  --panel: #fffdf8;
+  --ink: #1f1e1a;
+  --green: #2d7b46;
+  --yellow: #b8860b;
+  --red: #9d2a2a;
+  --muted: #6b655c;
+  --border: #d7d0c5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at 10% 10%, #efe7d7, transparent 40%),
+    radial-gradient(circle at 90% 90%, #f4ddd3, transparent 35%),
+    var(--bg);
+  color: var(--ink);
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+h1,
+h2 {
+  margin: 0;
+}
+
+.summary {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+}
+
+.chip {
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.chip.green,
+.status.green {
+  color: var(--green);
+}
+
+.chip.yellow,
+.status.yellow {
+  color: var(--yellow);
+}
+
+.chip.red,
+.status.red {
+  color: var(--red);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 1rem;
+  padding: 0 1.5rem 1.5rem;
+}
+
+section {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.8rem;
+}
+
+.tile {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+  background: white;
+}
+
+.tile .title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.tile .meta {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.incident-list {
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.incident-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+  background: #fff;
+  font-size: 0.88rem;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+}
+
+.badge.connected {
+  color: var(--green);
+}
+
+.badge.reconnecting {
+  color: var(--yellow);
+}
+
+.badge.stale {
+  color: var(--red);
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}

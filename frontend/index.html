@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Xstore Monitor</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Xstore Monitor</h1>
+      <div id="connectionBadge" class="badge stale">disconnected</div>
+    </header>
+
+    <section class="summary" id="summary">
+      <div class="chip green">green: <span id="greenCount">0</span></div>
+      <div class="chip yellow">yellow: <span id="yellowCount">0</span></div>
+      <div class="chip red">red: <span id="redCount">0</span></div>
+    </section>
+
+    <main class="layout">
+      <section>
+        <h2>Entity Status</h2>
+        <div id="statusGrid" class="grid"></div>
+      </section>
+
+      <section>
+        <h2>Incident Stream</h2>
+        <ul id="incidentList" class="incident-list"></ul>
+      </section>
+    </main>
+
+    <script src="./main.js" type="module"></script>
+  </body>
+</html>
