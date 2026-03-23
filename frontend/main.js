@@ -27,6 +27,17 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function statusLabel(statusColor) {
+  const labels = {
+    green: "OK",
+    yellow: "WARN",
+    red: "CRITICAL",
+    purple: "STALE",
+    white: "DISABLED",
+  };
+  return labels[statusColor] || String(statusColor || "").toUpperCase();
+}
+
 function compareIncidentsByNewest(a, b) {
   const timeDiff = Date.parse(b.happened_at) - Date.parse(a.happened_at);
   if (!Number.isNaN(timeDiff) && timeDiff !== 0) return timeDiff;
@@ -77,7 +88,7 @@ function renderStatusGrid() {
         aria-label="Open active alerts for ${storeId} ${component}"
       >
         <div class="title">${storeId} / ${component}</div>
-        <div>${statusColor.toUpperCase()} | active: ${status.active_incident_count}${disabledLabel}</div>
+        <div>${statusLabel(status.status_color)} | active: ${status.active_incident_count}${disabledLabel}</div>
         <div class="meta">${lastChangedAt}</div>
         <div>${lastMessage}</div>
       </article>
