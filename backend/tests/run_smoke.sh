@@ -11,10 +11,10 @@ if [[ ! -d .venv ]]; then
   .venv/bin/pip install -r requirements.txt
 fi
 
-export MONITOR_DATABASE_URL="sqlite:////tmp/xstore-monitor-smoke-$(date +%s).db"
+export MONITOR_DATABASE_URL="sqlite:////tmp/shermon-smoke-$(date +%s).db"
 export MONITOR_API_KEY="dev-monitor-key"
 
-.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 >/tmp/xstore-monitor-smoke.log 2>&1 &
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 >/tmp/shermon-smoke.log 2>&1 &
 SERVER_PID=$!
 
 cleanup() {

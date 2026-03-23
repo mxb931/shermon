@@ -12,7 +12,7 @@ from .schemas import BootstrapOut, EventAck, EventIn
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Xstore Monitor API", version="0.1.0")
+app = FastAPI(title="SherMon API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,

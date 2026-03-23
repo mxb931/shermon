@@ -1,5 +1,5 @@
 """
-Smoke tests for the Xstore Monitor backend.
+Smoke tests for the SherMon backend.
 Run with: python3 tests/smoke_test.py
 Server must be running on http://127.0.0.1:8000
 """

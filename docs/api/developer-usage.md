@@ -1,4 +1,4 @@
-# Xstore Monitor API Developer Usage Guide
+# SherMon API Developer Usage Guide
 
 This guide explains how to use the API in plain language.
 

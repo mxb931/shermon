@@ -1,6 +1,6 @@
-# Xstore Monitor (MVP)
+# SherMon (MVP)
 
-Xymon-inspired real-time monitoring service for Xstore incidents.
+Real-time monitoring service for Xstore incidents.
 
 ## What is implemented
 
