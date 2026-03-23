@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -8,8 +9,19 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .models import Acknowledgement, BroadcastEvent, EntityStatus, IncidentEvent, StreamCursor
-from .schemas import AckIn, AckOut, BootstrapOut, EntityStatusOut, EventIn, IncidentEventOut
+from .schemas import AckIn, AckOut, BootstrapOut, ComponentStatusOut, EntityStatusOut, EventIn, IncidentEventOut, StoreStatusOut
 from .status_projection import should_change_state, should_mark_active, status_from_event, updated_count
+
+
+def _color_rank(color: str) -> int:
+    # Higher rank means higher alert priority for aggregation.
+    return {
+        "red": 5,
+        "yellow": 4,
+        "purple": 3,
+        "green": 2,
+        "white": 1,
+    }.get(color, 0)
 
 
 def _to_utc_naive(dt: datetime) -> datetime:
@@ -128,6 +140,11 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
 
     status = _entity_status(db, event.store_id, event.component)
     next_color = status_from_event(event.event_type, event.severity)
+    green_reset = (
+        status.disabled_at is None
+        and next_color == "green"
+        and status.status_color in {"red", "yellow", "purple"}
+    )
 
     status.last_checkin_at = happened_at_naive
     if event.expected_green_interval_seconds is not None:
@@ -143,12 +160,19 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
         next_color = "white"
         closed_count = max(closed_count, status.active_incident_count)
 
-    status.active_incident_count = updated_count(
-        status.active_incident_count,
-        event.event_type,
-        closed_for_entity=closed_count,
-        deduplicated=duplicate_problem,
-    )
+    if green_reset:
+        incident.active = False
+        closed_count = max(closed_count, _close_all_active_for_entity(db, event.store_id, event.component))
+
+    if green_reset:
+        status.active_incident_count = 0
+    else:
+        status.active_incident_count = updated_count(
+            status.active_incident_count,
+            event.event_type,
+            closed_for_entity=closed_count,
+            deduplicated=duplicate_problem,
+        )
     status.last_message = event.message
     status.last_event_id = event.event_id
     if should_change_state(status.status_color, next_color, happened_at_naive, status.last_changed_at):
@@ -279,6 +303,50 @@ def get_active_incidents_for_entity(db: Session, store_id: str, component: str) 
             source=row.source,
             happened_at=row.happened_at,
             active=row.active,
+        )
+        for row in rows
+    ]
+
+
+def get_store_statuses(db: Session) -> list[StoreStatusOut]:
+    rows = db.scalars(select(EntityStatus)).all()
+    grouped: dict[str, list[EntityStatus]] = defaultdict(list)
+    for row in rows:
+        grouped[row.store_id].append(row)
+
+    stores: list[StoreStatusOut] = []
+    for store_id in sorted(grouped.keys()):
+        entries = grouped[store_id]
+        highest = max(entries, key=lambda entry: _color_rank(entry.status_color))
+        stores.append(
+            StoreStatusOut(
+                store_id=store_id,
+                status_color=highest.status_color,
+                component_count=len(entries),
+                active_incident_count=sum(entry.active_incident_count for entry in entries),
+            )
+        )
+    return stores
+
+
+def get_component_statuses_for_store(db: Session, store_id: str) -> list[ComponentStatusOut]:
+    rows = db.scalars(
+        select(EntityStatus)
+        .where(EntityStatus.store_id == store_id)
+        .order_by(EntityStatus.component.asc())
+    ).all()
+
+    return [
+        ComponentStatusOut(
+            store_id=row.store_id,
+            component=row.component,
+            status_color=row.status_color,
+            active_incident_count=row.active_incident_count,
+            last_message=row.last_message,
+            last_event_id=row.last_event_id,
+            last_changed_at=row.last_changed_at,
+            expected_green_interval_seconds=row.expected_green_interval_seconds,
+            disabled=row.disabled_at is not None,
         )
         for row in rows
     ]

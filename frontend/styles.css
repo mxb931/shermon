@@ -228,6 +228,29 @@ section {
   padding: 1rem;
 }
 
+.entity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.back-btn {
+  border: 1px solid #b9af9f;
+  border-radius: 6px;
+  padding: 0.36rem 0.62rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(180deg, #fefcf7 0%, #efe7dc 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+}
+
+.back-btn:hover {
+  border-color: #9e8f78;
+  background: linear-gradient(180deg, #fffef9 0%, #e6dbcc 100%);
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -261,6 +284,108 @@ section {
   transform: translateY(-1px);
   border-color: #b8ad99;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+.tile.status-button {
+  border-width: 2px;
+  transition:
+    transform 130ms ease,
+    box-shadow 150ms ease,
+    border-color 150ms ease,
+    filter 150ms ease;
+}
+
+.tile.status-button .eyebrow {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.82;
+  margin-bottom: 0.2rem;
+}
+
+.tile.status-button .status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 999px;
+  padding: 0.14rem 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.entity-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+
+.metric {
+  border: 1px solid rgba(0, 0, 0, 0.13);
+  border-radius: 6px;
+  padding: 0.28rem 0.36rem;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.metric span {
+  display: block;
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
+.metric strong {
+  display: block;
+  margin-top: 0.08rem;
+  font-size: 0.93rem;
+}
+
+.tile.status-button.green {
+  background: #dcefdc;
+  color: #16431f;
+}
+
+.tile.status-button.yellow {
+  background: #f8edcb;
+  color: #5c4600;
+}
+
+.tile.status-button.red {
+  background: #f5d7d7;
+  color: #5d1515;
+}
+
+.tile.status-button.purple {
+  background: #ece1f7;
+  color: #442265;
+}
+
+.tile.status-button.white {
+  background: #efefef;
+  color: #4e4e4e;
+}
+
+.tile.status-button .meta {
+  color: inherit;
+  opacity: 0.82;
+}
+
+.tile.status-button:focus-visible {
+  outline: 2px solid #2d261a;
+  outline-offset: 2px;
+}
+
+.tile.status-button:hover {
+  filter: saturate(1.03);
 }
 
 .incident-list {

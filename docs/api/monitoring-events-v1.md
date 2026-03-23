@@ -44,6 +44,10 @@ Accepts one event from Xstore.
 - `expires_at`: optional datetime. If in the past, request is rejected with `422`.
 - `metadata`: optional key-value context map.
 
+Green reset behavior:
+
+- If an incoming event resolves to green/OK while the component is currently `red`, `yellow`, or `purple`, SherMon clears all active incidents for that component and resets component status to `green`.
+
 ### Response payload
 
 ```json
@@ -63,6 +67,43 @@ Returns latest sequence, current entity statuses, and recent events for dashboar
 Returns counts by color state.
 
 Color keys: `green`, `yellow`, `red`, `purple`, `white`.
+
+## Hierarchy status APIs
+
+### GET /api/v1/status/stores
+
+Returns store-level status hierarchy rows.
+
+Response item fields:
+
+- `store_id`
+- `status_color` (highest-priority component status in the store)
+- `component_count`
+- `active_incident_count`
+
+Severity precedence used for aggregation:
+
+1. `red` (critical)
+2. `yellow` (warning)
+3. `purple` (stale)
+4. `green` (ok)
+5. `white` (disabled)
+
+### GET /api/v1/status/stores/{store_id}/components
+
+Returns component-level status rows for one store.
+
+Response item fields:
+
+- `store_id`
+- `component`
+- `status_color`
+- `active_incident_count`
+- `last_message`
+- `last_event_id`
+- `last_changed_at`
+- `expected_green_interval_seconds`
+- `disabled`
 
 ## Acknowledgements API
 

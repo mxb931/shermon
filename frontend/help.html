@@ -32,7 +32,7 @@
       <section>
         <h2>Help</h2>
         <h3>Quick Start</h3>
-        <p>Use Alerts to watch store/component health. Click an incident to acknowledge it temporarily. Use Test Sender to generate valid test traffic.</p>
+        <p>Use Alerts to navigate a hierarchy: Stores -> Components -> Active Alerts. Select a store to drill into its components, then select a component to review and acknowledge active alerts. Use Test Sender to generate valid test traffic.</p>
 
         <h3>Field Glossary</h3>
         <ul class="help-list">
@@ -46,15 +46,22 @@
 
         <h3>Alert Levels</h3>
         <ul class="help-list">
-          <li><strong>Red</strong>: critical issue needing immediate action.</li>
-          <li><strong>Yellow</strong>: warning condition requiring awareness.</li>
-          <li><strong>Green</strong>: healthy and functional.</li>
-          <li><strong>Purple</strong>: heartbeat timeout (missed expected green check-in).</li>
-          <li><strong>White/Clear</strong>: monitor disabled; timeout and alerting suppressed.</li>
+          <li><strong>CRITICAL (Red)</strong>: critical issue needing immediate action.</li>
+          <li><strong>WARN (Yellow)</strong>: warning condition requiring awareness.</li>
+          <li><strong>STALE (Purple)</strong>: heartbeat timeout (missed expected green check-in).</li>
+          <li><strong>OK (Green)</strong>: healthy and functional.</li>
+          <li><strong>DISABLED (White)</strong>: monitor disabled; timeout and alerting suppressed.</li>
+        </ul>
+
+        <h3>Status Hierarchy Rules</h3>
+        <ul class="help-list">
+          <li>Store buttons use the highest active component level in this order: CRITICAL, WARN, STALE, OK, DISABLED.</li>
+          <li>Component buttons use the component's current status color using the same priority labels.</li>
+          <li>If a green/OK signal is received while a component is red, yellow, or purple, SherMon clears existing active alerts for that component and resets it to OK.</li>
         </ul>
 
         <h3>Acknowledgements</h3>
-        <p>Acknowledging moves an alert to the Acknowledgements page until its expiry time. On expiry it returns to Alerts automatically.</p>
+        <p>You can acknowledge alerts from Incident Stream or from a component's Active Alerts view. Acknowledged active alerts remain visible in component details with an acknowledged indicator until acknowledgement expiry.</p>
 
         <h3>Troubleshooting</h3>
         <ul class="help-list">

@@ -16,13 +16,15 @@ from .repository import (
     create_ack,
     expire_ack,
     get_active_acks,
+    get_component_statuses_for_store,
     get_active_incidents_for_entity,
+    get_store_statuses,
     get_summary_counts,
     ingest_event,
     sweep_expired_acks,
     sweep_timeout_statuses,
 )
-from .schemas import AckIn, AckOut, BootstrapOut, EventAck, EventIn, IncidentEventOut
+from .schemas import AckIn, AckOut, BootstrapOut, ComponentStatusOut, EventAck, EventIn, IncidentEventOut, StoreStatusOut
 
 
 def _is_expired(dt: datetime) -> bool:
@@ -249,6 +251,16 @@ def get_summary(db: Session = Depends(get_db)) -> dict:
     return {
         "counts": get_summary_counts(db),
     }
+
+
+@app.get("/api/v1/status/stores", response_model=list[StoreStatusOut])
+def get_store_hierarchy_status(db: Session = Depends(get_db)) -> list[StoreStatusOut]:
+    return get_store_statuses(db)
+
+
+@app.get("/api/v1/status/stores/{store_id}/components", response_model=list[ComponentStatusOut])
+def get_component_hierarchy_status(store_id: str, db: Session = Depends(get_db)) -> list[ComponentStatusOut]:
+    return get_component_statuses_for_store(db, store_id)
 
 
 @app.get("/api/v1/active-alerts", response_model=list[IncidentEventOut])

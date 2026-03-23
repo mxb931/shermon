@@ -143,6 +143,22 @@ status, body = request(
 check("recovery accepted", body.get("accepted") is True, body)
 
 
+print("\n--- Green reset behavior ---")
+status, body = request(
+    "POST",
+    "/api/v1/events",
+    event(f"evt-T05-{RUN_ID}", f"LOY_FAIL_{RUN_ID}", "store-205", "loyalty", "problem", "critical", "Loyalty API down"),
+)
+check("critical alert accepted", body.get("accepted") is True, body)
+
+status, body = request(
+    "POST",
+    "/api/v1/events",
+    event(f"evt-T06-{RUN_ID}", f"LOY_OK_{RUN_ID}", "store-205", "loyalty", "problem", "info", "Loyalty check OK"),
+)
+check("green info signal accepted", body.get("accepted") is True, body)
+
+
 print("\n--- Bootstrap endpoint ---")
 status, body = request("GET", "/api/v1/bootstrap")
 check("returns 200", status == 200)
@@ -171,6 +187,26 @@ check(
     store_104_inv,
 )
 
+store_205_loyalty = next(
+    (s for s in body.get("statuses", []) if s["store_id"] == "store-205" and s["component"] == "loyalty"),
+    None,
+)
+check("loyalty entity present", store_205_loyalty is not None)
+check(
+    "green signal resets loyalty status to green",
+    store_205_loyalty and store_205_loyalty.get("status_color") == "green",
+    store_205_loyalty,
+)
+check(
+    "green signal clears loyalty active incident count",
+    store_205_loyalty and store_205_loyalty.get("active_incident_count") == 0,
+    store_205_loyalty,
+)
+
+status, body = request("GET", f"/api/v1/active-alerts?store_id=store-205&component=loyalty")
+check("active-alerts for reset component returns 200", status == 200, body)
+check("active-alerts list empty after green reset", isinstance(body, list) and len(body) == 0, body)
+
 
 print("\n--- Summary endpoint ---")
 status, body = request("GET", "/api/v1/summary")
@@ -182,6 +218,22 @@ check("has red count", "red" in counts, counts)
 check("has yellow count", "yellow" in counts, counts)
 check("has purple count", "purple" in counts, counts)
 check("has white count", "white" in counts, counts)
+
+
+print("\n--- Hierarchy endpoints ---")
+status, body = request("GET", "/api/v1/status/stores")
+check("stores hierarchy returns 200", status == 200, body)
+check("stores hierarchy returns list", isinstance(body, list), body)
+check("stores hierarchy contains store-104", any(s.get("store_id") == "store-104" for s in body), body)
+
+status, body = request("GET", "/api/v1/status/stores/store-104/components")
+check("component hierarchy returns 200", status == 200, body)
+check("component hierarchy returns list", isinstance(body, list), body)
+check(
+    "component hierarchy includes payments",
+    any(c.get("store_id") == "store-104" and c.get("component") == "payments" for c in body),
+    body,
+)
 
 
 print("\n--- Acknowledgement lifecycle ---")

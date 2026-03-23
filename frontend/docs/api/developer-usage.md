@@ -241,6 +241,7 @@ All fields are required unless noted.
 - `recovery` events set status color to `green`.
 - `disable` events set status to `white` and suppress timeout evaluation.
 - `enable` events set status to `green` and resume timeout evaluation.
+- If an incoming event resolves to `green` while the component is currently `red`, `yellow`, or `purple`, all active alerts for that component are cleared and status resets to `green`.
 - If `expected_green_interval_seconds` is set and green check-ins are missed, status transitions to `purple`.
 - Repeated active `problem` with same `store_id + component + dedup_key` is treated as deduplicated.
 - If you resend the exact same `event_id`, it is treated as idempotent replay.
@@ -380,6 +381,45 @@ Example response:
     "active": true
   }
 ]
+```
+
+---
+
+## `GET /api/v1/status/stores`
+
+Returns store-level hierarchy rows used by the Alerts drill-down UI.
+
+No auth required.
+
+Response item fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `store_id` | string | Store identifier |
+| `status_color` | string | Highest-priority component status in that store |
+| `component_count` | integer | Number of known components for the store |
+| `active_incident_count` | integer | Sum of active incidents across components |
+
+Status precedence used for `status_color`:
+
+1. `red` (critical)
+2. `yellow` (warning)
+3. `purple` (stale)
+4. `green` (ok)
+5. `white` (disabled)
+
+---
+
+## `GET /api/v1/status/stores/{store_id}/components`
+
+Returns component-level hierarchy rows for one store.
+
+No auth required.
+
+Example request:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/status/stores/store-104/components"
 ```
 
 ---

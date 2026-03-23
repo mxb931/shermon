@@ -38,7 +38,11 @@
 
     <main class="layout">
       <section>
-        <h2>Entity Status</h2>
+        <div class="entity-header">
+          <h2 id="entityStatusTitle">Stores</h2>
+          <button id="entityBackBtn" class="back-btn hidden" type="button">Back to Stores</button>
+        </div>
+        <p id="entityStatusHint" class="meta">Select a store to view component health.</p>
         <div id="statusGrid" class="grid"></div>
       </section>
 

@@ -38,6 +38,7 @@ SherMon is a lightweight monitoring platform for Xstore operations. It ingests i
 - FastAPI application entrypoint: `backend/app/main.py`.
 - Core API styles:
   - REST endpoints for ingest, bootstrap, summary, and acknowledgement actions.
+  - Hierarchy read endpoints for store and component status navigation.
   - WebSocket endpoint for realtime update events.
 - Authentication pattern:
   - Header-based shared key (`X-Monitor-Key`) checked server-side.
@@ -57,6 +58,12 @@ SherMon is a lightweight monitoring platform for Xstore operations. It ingests i
 - Event ingest and sweeper tasks emit broadcast payloads.
 - Frontend clients subscribe to websocket updates and reconcile local UI state from push events.
 
+### Projection Rules
+
+- Status levels are represented as `green`, `yellow`, `red`, `purple`, and `white`.
+- Hierarchy precedence for aggregate store status is: `red` -> `yellow` -> `purple` -> `green` -> `white`.
+- Green-reset rule: when an incoming event resolves to green for a component that is currently red/yellow/purple, SherMon clears prior active incidents for that component and resets active count to zero.
+
 ## Frontend Technical Details
 
 - Static multi-page navigation:
@@ -64,6 +71,10 @@ SherMon is a lightweight monitoring platform for Xstore operations. It ingests i
   - Acknowledgements
   - Test Sender
   - Help
+- Alerts page includes hierarchical in-place drill-down:
+  - Store-level buttons
+  - Component-level buttons per selected store
+  - Active-alert detail view with acknowledgement action
 - Browser APIs used:
   - `fetch` for REST calls
   - `WebSocket` for realtime subscriptions

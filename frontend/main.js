@@ -8,12 +8,18 @@ const state = {
   socket: null,
   reconnectAttempt: 0,
   pendingAckEventId: null,
+  selectedStoreId: null,
+  entityAlertsContext: null,
+  pingTimerId: null,
 };
 
 const statusGrid = document.getElementById("statusGrid");
 const incidentList = document.getElementById("incidentList");
 const connectionBadge = document.getElementById("connectionBadge");
 const ackModal = document.getElementById("ackModal");
+const entityStatusTitle = document.getElementById("entityStatusTitle");
+const entityStatusHint = document.getElementById("entityStatusHint");
+const entityBackBtn = document.getElementById("entityBackBtn");
 const entityAlertsModal = document.getElementById("entityAlertsModal");
 const entityAlertsSummary = document.getElementById("entityAlertsSummary");
 const entityAlertsList = document.getElementById("entityAlertsList");
@@ -36,6 +42,17 @@ function statusLabel(statusColor) {
     white: "DISABLED",
   };
   return labels[statusColor] || String(statusColor || "").toUpperCase();
+}
+
+function statusRank(statusColor) {
+  const ranks = {
+    red: 5,
+    yellow: 4,
+    purple: 3,
+    green: 2,
+    white: 1,
+  };
+  return ranks[statusColor] || 0;
 }
 
 function compareIncidentsByNewest(a, b) {
@@ -69,32 +86,130 @@ function renderSummary() {
   document.getElementById("whiteCount").textContent = String(counts.white);
 }
 
-function renderStatusGrid() {
-  const cards = [];
+function buildStoreSummaries() {
+  const grouped = new Map();
   for (const status of state.statuses.values()) {
+    const summary = grouped.get(status.store_id) || {
+      store_id: status.store_id,
+      status_color: "white",
+      active_incident_count: 0,
+      component_count: 0,
+    };
+
+    if (statusRank(status.status_color) > statusRank(summary.status_color)) {
+      summary.status_color = status.status_color;
+    }
+    summary.active_incident_count += status.active_incident_count;
+    summary.component_count += 1;
+    grouped.set(status.store_id, summary);
+  }
+
+  return Array.from(grouped.values()).sort((a, b) => {
+    const colorDiff = statusRank(b.status_color) - statusRank(a.status_color);
+    if (colorDiff !== 0) return colorDiff;
+    return a.store_id.localeCompare(b.store_id);
+  });
+}
+
+function getComponentsForSelectedStore() {
+  if (!state.selectedStoreId) return [];
+  return Array.from(state.statuses.values())
+    .filter((status) => status.store_id === state.selectedStoreId)
+    .sort((a, b) => {
+      const colorDiff = statusRank(b.status_color) - statusRank(a.status_color);
+      if (colorDiff !== 0) return colorDiff;
+      return a.component.localeCompare(b.component);
+    });
+}
+
+function renderStoreGrid() {
+  const stores = buildStoreSummaries();
+  entityStatusTitle.textContent = "Stores";
+  entityStatusHint.textContent = "Select a store to view component health.";
+  entityBackBtn.classList.add("hidden");
+
+  if (!stores.length) {
+    statusGrid.innerHTML = "<div class=\"meta\">No stores are reporting yet.</div>";
+    return;
+  }
+
+  const cards = stores.map((store) => {
+    const storeId = escapeHtml(store.store_id);
+    const statusColor = escapeHtml(store.status_color);
+    const label = escapeHtml(statusLabel(store.status_color));
+    return `
+      <article
+        class="tile status status-button ${statusColor} clickable"
+        data-store-id="${storeId}"
+        tabindex="0"
+        role="button"
+        aria-label="Open components for ${storeId}"
+      >
+        <div class="eyebrow">Store</div>
+        <div class="title">${storeId}</div>
+        <div class="status-line">
+          <span class="status-pill">${label}</span>
+        </div>
+        <div class="entity-metrics">
+          <div class="metric"><span>Components</span><strong>${store.component_count}</strong></div>
+          <div class="metric"><span>Active alerts</span><strong>${store.active_incident_count}</strong></div>
+        </div>
+      </article>
+    `;
+  });
+  statusGrid.innerHTML = cards.join("");
+}
+
+function renderComponentGrid() {
+  const components = getComponentsForSelectedStore();
+  entityStatusTitle.textContent = `Components - ${state.selectedStoreId}`;
+  entityStatusHint.textContent = "Select a component to view active alerts and acknowledge as needed.";
+  entityBackBtn.classList.remove("hidden");
+
+  if (!components.length) {
+    statusGrid.innerHTML = "<div class=\"meta\">No components found for this store.</div>";
+    return;
+  }
+
+  const cards = components.map((status) => {
     const storeId = escapeHtml(status.store_id);
     const component = escapeHtml(status.component);
     const statusColor = escapeHtml(status.status_color);
+    const label = escapeHtml(statusLabel(status.status_color));
     const lastChangedAt = escapeHtml(new Date(status.last_changed_at).toLocaleString());
     const lastMessage = escapeHtml(status.last_message || "No incidents yet");
     const disabledLabel = status.disabled ? " | disabled" : "";
-    cards.push(`
+
+    return `
       <article
-        class="tile status ${statusColor} clickable"
+        class="tile status status-button ${statusColor} clickable"
         data-store-id="${storeId}"
         data-component="${component}"
         tabindex="0"
         role="button"
         aria-label="Open active alerts for ${storeId} ${component}"
       >
-        <div class="title">${storeId} / ${component}</div>
-        <div>${statusLabel(status.status_color)} | active: ${status.active_incident_count}${disabledLabel}</div>
+        <div class="eyebrow">Component</div>
+        <div class="title">${component}</div>
+        <div class="status-line">
+          <span class="status-pill">${label}</span>
+          <span class="meta">active: ${status.active_incident_count}${disabledLabel}</span>
+        </div>
         <div class="meta">${lastChangedAt}</div>
         <div>${lastMessage}</div>
       </article>
-    `);
-  }
+    `;
+  });
+
   statusGrid.innerHTML = cards.join("");
+}
+
+function renderStatusGrid() {
+  if (state.selectedStoreId) {
+    renderComponentGrid();
+    return;
+  }
+  renderStoreGrid();
 }
 
 function renderIncidentList() {
@@ -103,9 +218,9 @@ function renderIncidentList() {
     .sort(compareIncidentsByNewest);
   const rows = visible.slice(0, 150).map((event) => `
     <li class="incident-item" data-event-id="${event.event_id}">
-      <strong>[${event.severity}]</strong> ${event.store_id}/${event.component} ${event.event_type}<br />
-      ${event.message}<br />
-      <small>${new Date(event.happened_at).toLocaleString()} | ${event.source}</small><br />
+      <strong>[${escapeHtml(event.severity)}]</strong> ${escapeHtml(event.store_id)}/${escapeHtml(event.component)} ${escapeHtml(event.event_type)}<br />
+      ${escapeHtml(event.message)}<br />
+      <small>${escapeHtml(new Date(event.happened_at).toLocaleString())} | ${escapeHtml(event.source)}</small><br />
       <button class="ack-btn" data-ack-event="${event.event_id}">Acknowledge</button>
     </li>
   `);
@@ -184,7 +299,10 @@ function connectWebSocket() {
     state.reconnectAttempt = 0;
     updateConnectionBadge("connected");
     ws.send("ping");
-    setInterval(() => {
+    if (state.pingTimerId) {
+      clearInterval(state.pingTimerId);
+    }
+    state.pingTimerId = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.send("ping");
     }, 15000);
   };
@@ -253,9 +371,12 @@ async function submitAckModal() {
 }
 
 async function openEntityAlertsModal(storeId, component) {
+  state.entityAlertsContext = { storeId, component };
   entityAlertsSummary.textContent = `${storeId} / ${component}`;
   entityAlertsList.innerHTML = "<li class=\"incident-item\">Loading active alerts...</li>";
-  entityAlertsModal.showModal();
+  if (!entityAlertsModal.open) {
+    entityAlertsModal.showModal();
+  }
 
   try {
     const query = new URLSearchParams({ store_id: storeId, component });
@@ -276,11 +397,15 @@ async function openEntityAlertsModal(storeId, component) {
       const source = escapeHtml(event.source);
       const eventId = escapeHtml(event.event_id);
       const acked = state.acks.has(event.event_id) ? " | acknowledged" : "";
+      const ackButton = state.acks.has(event.event_id)
+        ? ""
+        : `<button class=\"ack-btn\" data-ack-event=\"${eventId}\">Acknowledge</button>`;
       return `
         <li class="incident-item">
           <strong>[${severity}]</strong> ${eventType}${acked}<br />
           ${message}<br />
-          <small>${happenedAt} | ${source} | ${eventId}</small>
+          <small>${happenedAt} | ${source} | ${eventId}</small><br />
+          ${ackButton}
         </li>
       `;
     });
@@ -291,11 +416,22 @@ async function openEntityAlertsModal(storeId, component) {
   }
 }
 
+async function refreshEntityAlertsModalIfOpen() {
+  if (!entityAlertsModal.open || !state.entityAlertsContext) return;
+  const { storeId, component } = state.entityAlertsContext;
+  await openEntityAlertsModal(storeId, component);
+}
+
 function wireEntityStatusActions() {
   const openFromTile = (tile) => {
     const storeId = tile.getAttribute("data-store-id");
     const component = tile.getAttribute("data-component");
-    if (!storeId || !component) return;
+    if (!storeId) return;
+    if (!component) {
+      state.selectedStoreId = storeId;
+      renderStatusGrid();
+      return;
+    }
     openEntityAlertsModal(storeId, component);
   };
 
@@ -318,22 +454,36 @@ function wireEntityStatusActions() {
   });
 
   document.getElementById("entityAlertsCloseBtn").addEventListener("click", () => {
+    state.entityAlertsContext = null;
     entityAlertsModal.close();
+  });
+
+  entityAlertsModal.addEventListener("close", () => {
+    state.entityAlertsContext = null;
+  });
+
+  entityBackBtn.addEventListener("click", () => {
+    state.selectedStoreId = null;
+    renderStatusGrid();
   });
 }
 
 function wireAckActions() {
-  incidentList.addEventListener("click", (event) => {
+  const onAckClick = (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     const eventId = target.getAttribute("data-ack-event");
     if (!eventId) return;
     openAckModal(eventId);
-  });
+  };
+
+  incidentList.addEventListener("click", onAckClick);
+  entityAlertsList.addEventListener("click", onAckClick);
 
   document.getElementById("ackForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     await submitAckModal();
+    await refreshEntityAlertsModalIfOpen();
   });
   document.getElementById("ackCancelBtn").addEventListener("click", () => ackModal.close());
 }

@@ -41,6 +41,25 @@ class EntityStatusOut(BaseModel):
     disabled: bool = False
 
 
+class StoreStatusOut(BaseModel):
+    store_id: str
+    status_color: StatusColor
+    component_count: int
+    active_incident_count: int
+
+
+class ComponentStatusOut(BaseModel):
+    store_id: str
+    component: str
+    status_color: StatusColor
+    active_incident_count: int
+    last_message: str
+    last_event_id: str
+    last_changed_at: datetime
+    expected_green_interval_seconds: Optional[int] = None
+    disabled: bool = False
+
+
 class AckIn(BaseModel):
     event_id: str = Field(min_length=6, max_length=64)
     ack_message: str = Field(min_length=1, max_length=4000)

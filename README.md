@@ -9,6 +9,9 @@ Real-time monitoring service for Xstore incidents.
 - Status projection to green/yellow/red/purple/white.
 - WebSocket updates for live dashboard refresh.
 - Dashboard tabs for Alerts, Acknowledgements, Test Sender, and Help.
+- Hierarchical Alerts drill-down (Stores -> Components -> Active Alerts) with in-place navigation.
+- Store/component status buttons colored by highest active severity precedence.
+- Green-reset behavior: incoming green/OK signals clear existing active alerts for red/yellow/purple components.
 - Java sender helper class for Xstore integration.
 
 ## Run locally
