@@ -115,7 +115,6 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
         dedup_key=event.dedup_key,
         store_id=event.store_id,
         component=event.component,
-        category=event.category,
         event_type=event.event_type,
         severity=event.severity,
         message=event.message,
@@ -167,7 +166,6 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
             "dedup_key": event.dedup_key,
             "store_id": event.store_id,
             "component": event.component,
-            "category": event.category,
             "event_type": event.event_type,
             "severity": event.severity,
             "message": event.message,
@@ -237,7 +235,6 @@ def bootstrap(db: Session, recent_limit: int) -> BootstrapOut:
                 dedup_key=e.dedup_key,
                 store_id=e.store_id,
                 component=e.component,
-                category=e.category,
                 event_type=e.event_type,
                 severity=e.severity,
                 message=e.message,
@@ -258,6 +255,33 @@ def get_summary_counts(db: Session) -> dict[str, int]:
         if color in counts:
             counts[color] = count
     return counts
+
+
+def get_active_incidents_for_entity(db: Session, store_id: str, component: str) -> list[IncidentEventOut]:
+    rows = db.scalars(
+        select(IncidentEvent)
+        .where(
+            IncidentEvent.store_id == store_id,
+            IncidentEvent.component == component,
+            IncidentEvent.active.is_(True),
+        )
+        .order_by(IncidentEvent.happened_at.desc())
+    ).all()
+    return [
+        IncidentEventOut(
+            event_id=row.event_id,
+            dedup_key=row.dedup_key,
+            store_id=row.store_id,
+            component=row.component,
+            event_type=row.event_type,
+            severity=row.severity,
+            message=row.message,
+            source=row.source,
+            happened_at=row.happened_at,
+            active=row.active,
+        )
+        for row in rows
+    ]
 
 
 def create_ack(db: Session, ack: AckIn) -> tuple[Optional[AckOut], dict]:

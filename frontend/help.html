@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SherMon - Help</title>
+    <link rel="stylesheet" href="./styles.css?v=20260323b" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>SherMon</h1>
+      <div id="connectionBadge" class="badge stale">disconnected</div>
+    </header>
+
+    <nav class="tabbar" aria-label="Main navigation">
+      <a class="tab" href="./index.html">Alerts</a>
+      <a class="tab" href="./acknowledgements.html">Acknowledgements</a>
+      <a class="tab" href="./test-sender.html">Test Sender</a>
+      <div class="menu-group">
+        <button class="tab tab-button help-toggle" type="button" aria-expanded="false" aria-controls="helpSubmenu">Help</button>
+        <div class="submenu" role="menu" aria-label="Documentation links">
+          <a class="submenu-item" href="./help.html">Help Overview</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=technical-specification">Technical Specification</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-developer-usage">API Developer Usage</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-monitoring-events-v1">Monitoring Events API v1</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=readme">Project README</a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="layout single">
+      <section>
+        <h2>Help</h2>
+        <h3>Quick Start</h3>
+        <p>Use Alerts to watch store/component health. Click an incident to acknowledge it temporarily. Use Test Sender to generate valid test traffic.</p>
+
+        <h3>Field Glossary</h3>
+        <ul class="help-list">
+          <li><strong>store_id/component</strong>: identify the monitored entity.</li>
+          <li><strong>event_type</strong>: problem, recovery, disable, or enable.</li>
+          <li><strong>severity</strong>: info, warning, or critical.</li>
+          <li><strong>dedup_key</strong>: groups repeated reports for the same issue.</li>
+          <li><strong>expected_green_interval_seconds</strong>: optional heartbeat timeout window.</li>
+          <li><strong>expires_at</strong>: time after which event/ack is no longer valid.</li>
+        </ul>
+
+        <h3>Alert Levels</h3>
+        <ul class="help-list">
+          <li><strong>Red</strong>: critical issue needing immediate action.</li>
+          <li><strong>Yellow</strong>: warning condition requiring awareness.</li>
+          <li><strong>Green</strong>: healthy and functional.</li>
+          <li><strong>Purple</strong>: heartbeat timeout (missed expected green check-in).</li>
+          <li><strong>White/Clear</strong>: monitor disabled; timeout and alerting suppressed.</li>
+        </ul>
+
+        <h3>Acknowledgements</h3>
+        <p>Acknowledging moves an alert to the Acknowledgements page until its expiry time. On expiry it returns to Alerts automatically.</p>
+
+        <h3>Troubleshooting</h3>
+        <ul class="help-list">
+          <li>Connection badge stale/reconnecting indicates websocket interruption.</li>
+          <li>401 errors indicate API key mismatch.</li>
+          <li>422 errors indicate invalid field values or expired timestamps.</li>
+        </ul>
+      </section>
+    </main>
+
+    <script src="./page-status.js" type="module"></script>
+    <script src="./help-menu.js"></script>
+  </body>
+</html>

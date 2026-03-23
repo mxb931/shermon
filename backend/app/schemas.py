@@ -14,7 +14,6 @@ class EventIn(BaseModel):
     dedup_key: str = Field(min_length=3, max_length=128)
     store_id: str = Field(min_length=1, max_length=64)
     component: str = Field(min_length=1, max_length=128)
-    category: str = Field(min_length=1, max_length=64)
     event_type: EventType
     severity: Severity
     message: str = Field(min_length=1, max_length=4000)
@@ -64,7 +63,6 @@ class IncidentEventOut(BaseModel):
     dedup_key: str
     store_id: str
     component: str
-    category: str
     event_type: str
     severity: str
     message: str

@@ -46,7 +46,6 @@ def event(event_id, dedup_key, store_id, component, event_type, severity, messag
         "dedup_key": dedup_key,
         "store_id": store_id,
         "component": component,
-        "category": "test",
         "event_type": event_type,
         "severity": severity,
         "message": message,

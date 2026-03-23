@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SherMon - Documentation</title>
+    <link rel="stylesheet" href="./styles.css?v=20260323b" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>SherMon</h1>
+      <div id="connectionBadge" class="badge stale">disconnected</div>
+    </header>
+
+    <nav class="tabbar" aria-label="Main navigation">
+      <a class="tab" href="./index.html">Alerts</a>
+      <a class="tab" href="./acknowledgements.html">Acknowledgements</a>
+      <a class="tab" href="./test-sender.html">Test Sender</a>
+      <div class="menu-group">
+        <button class="tab tab-button help-toggle" type="button" aria-expanded="false" aria-controls="helpSubmenu">Help</button>
+        <div class="submenu" role="menu" aria-label="Documentation links">
+          <a class="submenu-item" href="./help.html">Help Overview</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=technical-specification">Technical Specification</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-developer-usage">API Developer Usage</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-monitoring-events-v1">Monitoring Events API v1</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=readme">Project README</a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="layout single">
+      <section>
+        <h2 id="docTitle">Documentation</h2>
+        <pre id="docContent" class="doc-content">Loading document...</pre>
+      </section>
+    </main>
+
+    <script src="./page-status.js" type="module"></script>
+    <script src="./help-menu.js"></script>
+    <script src="./doc-viewer.js"></script>
+  </body>
+</html>

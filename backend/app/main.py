@@ -16,12 +16,13 @@ from .repository import (
     create_ack,
     expire_ack,
     get_active_acks,
+    get_active_incidents_for_entity,
     get_summary_counts,
     ingest_event,
     sweep_expired_acks,
     sweep_timeout_statuses,
 )
-from .schemas import AckIn, AckOut, BootstrapOut, EventAck, EventIn
+from .schemas import AckIn, AckOut, BootstrapOut, EventAck, EventIn, IncidentEventOut
 
 
 def _is_expired(dt: datetime) -> bool:
@@ -41,8 +42,99 @@ def _ensure_column(table: str, column: str, ddl: str) -> None:
         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
 
 
+def _drop_incident_category_if_present() -> None:
+    inspector = inspect(engine)
+    if "incident_events" not in inspector.get_table_names():
+        return
+
+    existing = {c["name"] for c in inspector.get_columns("incident_events")}
+    if "category" not in existing:
+        return
+
+    with engine.begin() as conn:
+        try:
+            conn.execute(text("ALTER TABLE incident_events DROP COLUMN category"))
+            return
+        except Exception:
+            # Fallback for SQLite builds that do not support DROP COLUMN.
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE incident_events_new (
+                        id INTEGER PRIMARY KEY,
+                        event_id VARCHAR(64) NOT NULL UNIQUE,
+                        dedup_key VARCHAR(128) NOT NULL,
+                        store_id VARCHAR(64) NOT NULL,
+                        component VARCHAR(128) NOT NULL,
+                        event_type VARCHAR(16) NOT NULL,
+                        severity VARCHAR(16) NOT NULL,
+                        message TEXT NOT NULL,
+                        source VARCHAR(128) NOT NULL,
+                        metadata_json TEXT NOT NULL DEFAULT '{}',
+                        happened_at DATETIME NOT NULL,
+                        expires_at DATETIME,
+                        created_at DATETIME NOT NULL,
+                        active BOOLEAN NOT NULL DEFAULT 1
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO incident_events_new (
+                        id,
+                        event_id,
+                        dedup_key,
+                        store_id,
+                        component,
+                        event_type,
+                        severity,
+                        message,
+                        source,
+                        metadata_json,
+                        happened_at,
+                        expires_at,
+                        created_at,
+                        active
+                    )
+                    SELECT
+                        id,
+                        event_id,
+                        dedup_key,
+                        store_id,
+                        component,
+                        event_type,
+                        severity,
+                        message,
+                        source,
+                        metadata_json,
+                        happened_at,
+                        expires_at,
+                        created_at,
+                        active
+                    FROM incident_events
+                    """
+                )
+            )
+            conn.execute(text("DROP TABLE incident_events"))
+            conn.execute(text("ALTER TABLE incident_events_new RENAME TO incident_events"))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_incident_events_event_id ON incident_events (event_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_incident_events_dedup_key ON incident_events (dedup_key)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_incident_events_store_id ON incident_events (store_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_incident_events_component ON incident_events (component)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_incident_events_event_type ON incident_events (event_type)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_incident_events_severity ON incident_events (severity)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_incident_events_source ON incident_events (source)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_incident_events_happened_at ON incident_events (happened_at)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_incident_events_expires_at ON incident_events (expires_at)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_incident_events_created_at ON incident_events (created_at)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_incident_events_active ON incident_events (active)"))
+
+
 def ensure_schema_compat() -> None:
     Base.metadata.create_all(bind=engine)
+    _drop_incident_category_if_present()
     _ensure_column("incident_events", "expires_at", "expires_at DATETIME")
     _ensure_column("entity_status", "expected_green_interval_seconds", "expected_green_interval_seconds INTEGER")
     _ensure_column("entity_status", "last_checkin_at", "last_checkin_at DATETIME")
@@ -157,6 +249,15 @@ def get_summary(db: Session = Depends(get_db)) -> dict:
     return {
         "counts": get_summary_counts(db),
     }
+
+
+@app.get("/api/v1/active-alerts", response_model=list[IncidentEventOut])
+def get_active_alerts_for_entity(
+    store_id: str,
+    component: str,
+    db: Session = Depends(get_db),
+) -> list[IncidentEventOut]:
+    return get_active_incidents_for_entity(db, store_id, component)
 
 
 @app.websocket("/ws/updates")

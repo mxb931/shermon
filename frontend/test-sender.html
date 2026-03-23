@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SherMon - Test Sender</title>
+    <link rel="stylesheet" href="./styles.css?v=20260323b" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>SherMon</h1>
+      <div id="connectionBadge" class="badge stale">disconnected</div>
+    </header>
+
+    <nav class="tabbar" aria-label="Main navigation">
+      <a class="tab" href="./index.html">Alerts</a>
+      <a class="tab" href="./acknowledgements.html">Acknowledgements</a>
+      <a class="tab active" href="./test-sender.html">Test Sender</a>
+      <div class="menu-group">
+        <button class="tab tab-button help-toggle" type="button" aria-expanded="false" aria-controls="helpSubmenu">Help</button>
+        <div class="submenu" role="menu" aria-label="Documentation links">
+          <a class="submenu-item" href="./help.html">Help Overview</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=technical-specification">Technical Specification</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-developer-usage">API Developer Usage</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-monitoring-events-v1">Monitoring Events API v1</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=readme">Project README</a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="layout single">
+      <section>
+        <h2>Test Sender</h2>
+        <p class="meta">Only message is freeform. All other fields are constrained to valid values.</p>
+
+        <div class="form-row">
+          <label for="senderMode">Mode</label>
+          <select id="senderMode">
+            <option value="event">Event</option>
+            <option value="ack">Acknowledgement</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label for="apiKeySelect">API Key</label>
+          <select id="apiKeySelect">
+            <option value="dev-monitor-key">dev-monitor-key</option>
+          </select>
+        </div>
+
+        <div id="eventModeForm">
+          <div class="form-row"><label for="eventType">Event Type</label><select id="eventType"><option>problem</option><option>recovery</option><option>disable</option><option>enable</option></select></div>
+          <div class="form-row"><label for="severity">Severity</label><select id="severity"><option>critical</option><option>warning</option><option>info</option></select></div>
+          <div class="form-row"><label for="storeId">Store</label><select id="storeId"><option>store-101</option><option selected>store-104</option><option>store-220</option></select></div>
+          <div class="form-row"><label for="component">Component</label><select id="component"><option selected>payments</option><option>inventory</option><option>network</option></select></div>
+          <div class="form-row"><label for="source">Source</label><select id="source"><option selected>test-sender</option><option>xstore-pos</option><option>watchdog</option></select></div>
+          <div class="form-row"><label for="heartbeatInterval">Expected Green Interval (seconds)</label><input id="heartbeatInterval" type="number" min="1" step="1" placeholder="optional" /></div>
+          <div class="form-row"><label for="eventExpiresAt">Event Expires At</label><input id="eventExpiresAt" type="datetime-local" /></div>
+          <div class="form-row"><label for="metadataTemplate">Metadata Template</label><select id="metadataTemplate"><option value="{}">None</option><option value='{"terminal_id":"lane-3"}'>POS Terminal</option><option value='{"host":"store-router-1"}'>Server</option></select></div>
+          <div class="form-row"><label for="eventMessage">Message</label><textarea id="eventMessage" rows="3">Test message from sender</textarea></div>
+        </div>
+
+        <div id="ackModeForm" class="hidden">
+          <div class="form-row"><label for="ackEventId">Event</label><select id="ackEventId"></select></div>
+          <div class="form-row"><label for="ackBy">Ack By</label><select id="ackBy"><option selected>operator-console</option><option>shift-lead</option><option>noc</option></select></div>
+          <div class="form-row"><label for="ackExpiresAt">Ack Expires At</label><input id="ackExpiresAt" type="datetime-local" required /></div>
+          <div class="form-row"><label for="ackMessage">Message</label><textarea id="ackMessage" rows="3">Investigating issue.</textarea></div>
+        </div>
+
+        <div class="btn-row">
+          <button id="sendTestMessageBtn" type="button">Send</button>
+        </div>
+
+        <h3>Payload Preview</h3>
+        <pre id="payloadPreview" class="code-box"></pre>
+
+        <h3>API Response</h3>
+        <pre id="senderResponse" class="code-box"></pre>
+      </section>
+    </main>
+
+    <script src="./page-status.js" type="module"></script>
+    <script src="./test-sender.js" type="module"></script>
+    <script src="./help-menu.js"></script>
+  </body>
+</html>

@@ -17,7 +17,6 @@ class IncidentEvent(Base):
     dedup_key: Mapped[str] = mapped_column(String(128), index=True)
     store_id: Mapped[str] = mapped_column(String(64), index=True)
     component: Mapped[str] = mapped_column(String(128), index=True)
-    category: Mapped[str] = mapped_column(String(64), index=True)
     event_type: Mapped[str] = mapped_column(String(16), index=True)
     severity: Mapped[str] = mapped_column(String(16), index=True)
     message: Mapped[str] = mapped_column(Text)
