@@ -14,6 +14,7 @@
 
     <nav class="tabbar" aria-label="Main navigation">
       <a class="tab" href="./index.html">Alerts</a>
+      <a class="tab" href="./all-stores.html">All Stores</a>
       <a class="tab" href="./acknowledgements.html">Acknowledgements</a>
       <a class="tab" href="./test-sender.html">Test Sender</a>
       <div class="menu-group">
@@ -38,10 +39,11 @@
         <ul class="help-list">
           <li><strong>store_id/component</strong>: identify the monitored entity.</li>
           <li><strong>event_type</strong>: problem, recovery, disable, or enable.</li>
-          <li><strong>severity</strong>: info, warning, or critical.</li>
+          <li><strong>severity</strong>: validated by event type (problem=warning/critical; recovery=info; disable=info; enable=info).</li>
           <li><strong>dedup_key</strong>: groups repeated reports for the same issue.</li>
-          <li><strong>expected_green_interval_seconds</strong>: optional heartbeat timeout window.</li>
-          <li><strong>expires_at</strong>: time after which event/ack is no longer valid.</li>
+          <li><strong>stale_interval</strong>: optional event timing duration in d/h/m format that sets stale timeout behavior.</li>
+          <li><strong>expires_at</strong>: acknowledgement expiry timestamp (acks only).</li>
+          <li><strong>metadata</strong>: in Test Sender, enter custom metadata as key=value lines (one per line).</li>
         </ul>
 
         <h3>Alert Levels</h3>
@@ -57,6 +59,7 @@
         <ul class="help-list">
           <li>Store buttons use the highest active component level in this order: CRITICAL, WARN, STALE, OK, DISABLED.</li>
           <li>Component buttons use the component's current status color using the same priority labels.</li>
+          <li>Only CRITICAL, WARN, and STALE states are active alerts. OK and DISABLED are not active alerts.</li>
           <li>If a green/OK signal is received while a component is red, yellow, or purple, SherMon clears existing active alerts for that component and resets it to OK.</li>
         </ul>
 

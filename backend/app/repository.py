@@ -9,7 +9,17 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .models import Acknowledgement, BroadcastEvent, EntityStatus, IncidentEvent, StreamCursor
-from .schemas import AckIn, AckOut, BootstrapOut, ComponentStatusOut, EntityStatusOut, EventIn, IncidentEventOut, StoreStatusOut
+from .schemas import (
+    AckIn,
+    AckOut,
+    BootstrapOut,
+    ComponentStatusOut,
+    EntityStatusOut,
+    EventIn,
+    IncidentEventOut,
+    StoreStatusOut,
+    parse_stale_interval_seconds,
+)
 from .status_projection import should_change_state, should_mark_active, status_from_event, updated_count
 
 
@@ -60,7 +70,7 @@ def _entity_status(db: Session, store_id: str, component: str) -> EntityStatus:
             last_message="",
             last_event_id="",
             last_changed_at=datetime.utcnow(),
-            expected_green_interval_seconds=None,
+            stale_interval_seconds=None,
             last_checkin_at=datetime.utcnow(),
             disabled_at=None,
         )
@@ -121,6 +131,7 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
         closed_count = _close_all_active_for_entity(db, event.store_id, event.component)
 
     happened_at_naive = _utc_now_naive()
+    next_color = status_from_event(event.event_type, event.severity)
 
     incident = IncidentEvent(
         event_id=event.event_id,
@@ -133,13 +144,12 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
         source=event.source,
         metadata_json=json.dumps(event.metadata),
         happened_at=happened_at_naive,
-        expires_at=_to_utc_naive(event.expires_at) if event.expires_at else None,
-        active=should_mark_active(event.event_type) and not duplicate_problem,
+        expires_at=None,
+        active=should_mark_active(event.event_type, next_color) and not duplicate_problem,
     )
     db.add(incident)
 
     status = _entity_status(db, event.store_id, event.component)
-    next_color = status_from_event(event.event_type, event.severity)
     green_reset = (
         status.disabled_at is None
         and next_color == "green"
@@ -147,8 +157,8 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
     )
 
     status.last_checkin_at = happened_at_naive
-    if event.expected_green_interval_seconds is not None:
-        status.expected_green_interval_seconds = event.expected_green_interval_seconds
+    if event.stale_interval is not None:
+        status.stale_interval_seconds = parse_stale_interval_seconds(event.stale_interval)
 
     if event.event_type == "disable":
         status.disabled_at = happened_at_naive
@@ -172,6 +182,7 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
             event.event_type,
             closed_for_entity=closed_count,
             deduplicated=duplicate_problem,
+            increment_active=incident.active,
         )
     status.last_message = event.message
     status.last_event_id = event.event_id
@@ -206,7 +217,7 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
             "last_message": status.last_message,
             "last_event_id": status.last_event_id,
             "last_changed_at": status.last_changed_at.isoformat(),
-            "expected_green_interval_seconds": status.expected_green_interval_seconds,
+            "stale_interval_seconds": status.stale_interval_seconds,
             "disabled": status.disabled_at is not None,
         },
         "deduplicated": duplicate_problem,
@@ -248,7 +259,7 @@ def bootstrap(db: Session, recent_limit: int) -> BootstrapOut:
                 last_message=s.last_message,
                 last_event_id=s.last_event_id,
                 last_changed_at=s.last_changed_at,
-                expected_green_interval_seconds=s.expected_green_interval_seconds,
+                stale_interval_seconds=s.stale_interval_seconds,
                 disabled=s.disabled_at is not None,
             )
             for s in statuses
@@ -345,7 +356,7 @@ def get_component_statuses_for_store(db: Session, store_id: str) -> list[Compone
             last_message=row.last_message,
             last_event_id=row.last_event_id,
             last_changed_at=row.last_changed_at,
-            expected_green_interval_seconds=row.expected_green_interval_seconds,
+            stale_interval_seconds=row.stale_interval_seconds,
             disabled=row.disabled_at is not None,
         )
         for row in rows
@@ -452,7 +463,7 @@ def sweep_timeout_statuses(db: Session) -> list[dict]:
     rows = db.scalars(
         select(EntityStatus).where(
             EntityStatus.disabled_at.is_(None),
-            EntityStatus.expected_green_interval_seconds.is_not(None),
+            EntityStatus.stale_interval_seconds.is_not(None),
             EntityStatus.last_checkin_at.is_not(None),
         )
     ).all()
@@ -460,9 +471,9 @@ def sweep_timeout_statuses(db: Session) -> list[dict]:
     payloads: list[dict] = []
     for row in rows:
         assert row.last_checkin_at is not None
-        assert row.expected_green_interval_seconds is not None
+        assert row.stale_interval_seconds is not None
         elapsed = (now - row.last_checkin_at).total_seconds()
-        if elapsed <= row.expected_green_interval_seconds:
+        if elapsed <= row.stale_interval_seconds:
             continue
         if row.status_color == "purple":
             continue
@@ -481,7 +492,7 @@ def sweep_timeout_statuses(db: Session) -> list[dict]:
                     "last_message": row.last_message,
                     "last_event_id": row.last_event_id,
                     "last_changed_at": row.last_changed_at.isoformat(),
-                    "expected_green_interval_seconds": row.expected_green_interval_seconds,
+                    "stale_interval_seconds": row.stale_interval_seconds,
                     "disabled": False,
                 },
             }

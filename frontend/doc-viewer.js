@@ -36,7 +36,7 @@ async function loadDocument() {
       throw new Error(`Failed to load document: HTTP ${response.status}`);
     }
     const text = await response.text();
-    contentEl.textContent = text;
+    contentEl.innerHTML = marked.parse(text);
   } catch (error) {
     contentEl.textContent = String(error);
   }

@@ -14,6 +14,7 @@
 
     <nav class="tabbar" aria-label="Main navigation">
       <a class="tab" href="./index.html">Alerts</a>
+      <a class="tab" href="./all-stores.html">All Stores</a>
       <a class="tab" href="./acknowledgements.html">Acknowledgements</a>
       <a class="tab active" href="./test-sender.html">Test Sender</a>
       <div class="menu-group">
@@ -54,9 +55,8 @@
           <div class="form-row"><label for="storeId">Store</label><select id="storeId"><option>store-101</option><option selected>store-104</option><option>store-220</option></select></div>
           <div class="form-row"><label for="component">Component</label><select id="component"><option selected>payments</option><option>inventory</option><option>network</option></select></div>
           <div class="form-row"><label for="source">Source</label><select id="source"><option selected>test-sender</option><option>xstore-pos</option><option>watchdog</option></select></div>
-          <div class="form-row"><label for="heartbeatInterval">Expected Green Interval (seconds)</label><input id="heartbeatInterval" type="number" min="1" step="1" placeholder="optional" /></div>
-          <div class="form-row"><label for="eventExpiresAt">Event Expires At</label><input id="eventExpiresAt" type="datetime-local" /></div>
-          <div class="form-row"><label for="metadataTemplate">Metadata Template</label><select id="metadataTemplate"><option value="{}">None</option><option value='{"terminal_id":"lane-3"}'>POS Terminal</option><option value='{"host":"store-router-1"}'>Server</option></select></div>
+          <div class="form-row"><label for="staleInterval">Stale Interval (d/h/m)</label><input id="staleInterval" type="text" placeholder="2d5h10m" /></div>
+          <div class="form-row"><label for="metadataInput">Metadata (key=value per line)</label><textarea id="metadataInput" rows="4" placeholder="terminal_id=lane-3&#10;host=store-router-1"></textarea></div>
           <div class="form-row"><label for="eventMessage">Message</label><textarea id="eventMessage" rows="3">Test message from sender</textarea></div>
         </div>
 
@@ -80,7 +80,7 @@
     </main>
 
     <script src="./page-status.js" type="module"></script>
-    <script src="./test-sender.js" type="module"></script>
+    <script src="./test-sender.js?v=20260323e" type="module"></script>
     <script src="./help-menu.js"></script>
   </body>
 </html>

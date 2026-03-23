@@ -225,11 +225,10 @@ All fields are required unless noted.
 | `store_id` | string | Yes | Length 1-64 | None |
 | `component` | string | Yes | Length 1-128 | None |
 | `event_type` | string | Yes | `problem`, `recovery`, `disable`, or `enable` | None |
-| `severity` | string | Yes | `info`, `warning`, `critical` | None |
+| `severity` | string | Yes | Allowed by event type (see below) | None |
 | `message` | string | Yes | Length 1-4000 | None |
 | `source` | string | Yes | Length 1-128 | None |
-| `expected_green_interval_seconds` | integer | No | Minimum 1; enables purple timeout when missed | None |
-| `expires_at` | datetime string | No | Must be in the future if provided | None |
+| `stale_interval` | string | No | Duration using d/h/m only (example `2d5h10m`, `4h`, `30m`) | None |
 | `metadata` | object | No | Free-form key/value map | `{}` |
 
 ### Behavior notes
@@ -237,15 +236,22 @@ All fields are required unless noted.
 - `problem` events:
   - `critical` sets status color to `red`
   - `warning` sets status color to `yellow`
-  - `info` sets status color to `green`
+- `problem` does not accept `info` severity.
 - `recovery` events set status color to `green`.
 - `disable` events set status to `white` and suppress timeout evaluation.
 - `enable` events set status to `green` and resume timeout evaluation.
+- Severity matrix is enforced:
+  - `problem`: `warning`, `critical`
+  - `recovery`: `info`
+  - `enable`: `info`
+  - `disable`: `info`
+- Invalid event_type/severity combinations return `422`.
+- Active alerts are only `red`, `yellow`, or `purple`; `green` and `white` are never active alerts.
 - If an incoming event resolves to `green` while the component is currently `red`, `yellow`, or `purple`, all active alerts for that component are cleared and status resets to `green`.
-- If `expected_green_interval_seconds` is set and green check-ins are missed, status transitions to `purple`.
+- If `stale_interval` is set and green check-ins are missed, status transitions to `purple`.
 - Repeated active `problem` with same `store_id + component + dedup_key` is treated as deduplicated.
 - If you resend the exact same `event_id`, it is treated as idempotent replay.
-- If `expires_at` is in the past, API returns `422`.
+- Invalid `stale_interval` format returns `422`.
 - `happened_at` is stamped automatically by the API at ingest time.
 
 ### Response fields

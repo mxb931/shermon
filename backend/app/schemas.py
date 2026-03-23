@@ -1,7 +1,8 @@
 from datetime import datetime
+import re
 from typing import Any, Dict, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 Severity = Literal["info", "warning", "critical"]
@@ -9,7 +10,34 @@ StatusColor = Literal["green", "yellow", "red", "purple", "white"]
 EventType = Literal["problem", "recovery", "disable", "enable"]
 
 
+_STALE_INTERVAL_RE = re.compile(r"^(?:\d+[dhm])+$")
+_STALE_INTERVAL_PART_RE = re.compile(r"(\d+)([dhm])")
+
+
+def parse_stale_interval_seconds(value: str) -> int:
+    raw = (value or "").strip().lower()
+    if not raw:
+        raise ValueError("stale_interval must not be empty")
+    if not _STALE_INTERVAL_RE.fullmatch(raw):
+        raise ValueError("stale_interval must use only d, h, m segments like 2d5h10m")
+
+    seconds = 0
+    for amount_text, unit in _STALE_INTERVAL_PART_RE.findall(raw):
+        amount = int(amount_text)
+        if amount <= 0:
+            raise ValueError("stale_interval segment values must be positive integers")
+        if unit == "d":
+            seconds += amount * 86400
+        elif unit == "h":
+            seconds += amount * 3600
+        else:
+            seconds += amount * 60
+    return seconds
+
+
 class EventIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     event_id: str = Field(min_length=6, max_length=64)
     dedup_key: str = Field(min_length=3, max_length=128)
     store_id: str = Field(min_length=1, max_length=64)
@@ -18,9 +46,26 @@ class EventIn(BaseModel):
     severity: Severity
     message: str = Field(min_length=1, max_length=4000)
     source: str = Field(min_length=1, max_length=128)
-    expected_green_interval_seconds: Optional[int] = Field(default=None, ge=1)
-    expires_at: Optional[datetime] = None
+    stale_interval: Optional[str] = Field(default=None, min_length=2, max_length=32)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_severity_for_event_type(self):
+        allowed = {
+            "problem": {"warning", "critical"},
+            "recovery": {"info"},
+            "enable": {"info"},
+            "disable": {"info"},
+        }
+        if self.severity not in allowed[self.event_type]:
+            allowed_values = ", ".join(sorted(allowed[self.event_type]))
+            raise ValueError(
+                f"severity '{self.severity}' is invalid for event_type '{self.event_type}'; "
+                f"allowed severities: {allowed_values}"
+            )
+        if self.stale_interval is not None:
+            parse_stale_interval_seconds(self.stale_interval)
+        return self
 
 
 class EventAck(BaseModel):
@@ -37,7 +82,7 @@ class EntityStatusOut(BaseModel):
     last_message: str
     last_event_id: str
     last_changed_at: datetime
-    expected_green_interval_seconds: Optional[int] = None
+    stale_interval_seconds: Optional[int] = None
     disabled: bool = False
 
 
@@ -56,7 +101,7 @@ class ComponentStatusOut(BaseModel):
     last_message: str
     last_event_id: str
     last_changed_at: datetime
-    expected_green_interval_seconds: Optional[int] = None
+    stale_interval_seconds: Optional[int] = None
     disabled: bool = False
 
 

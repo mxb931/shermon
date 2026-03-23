@@ -1,5 +1,15 @@
 const API_BASE = window.MONITOR_API_BASE || "http://localhost:8000";
 
+const ALLOWED_SEVERITIES_BY_EVENT_TYPE = {
+  problem: ["critical", "warning"],
+  recovery: ["info"],
+  enable: ["info"],
+  disable: ["info"],
+};
+
+const STALE_INTERVAL_RE = /^(?:\d+[dhm])+$/;
+const STALE_INTERVAL_PART_RE = /(\d+)([dhm])/g;
+
 function toUtcIso(value) {
   if (!value) return null;
   const local = new Date(value);
@@ -17,9 +27,58 @@ function defaultDedupKey() {
   return `${store}_${component}_${eventType}`.toUpperCase();
 }
 
-function metadataFromTemplate() {
-  const raw = document.getElementById("metadataTemplate").value;
-  return JSON.parse(raw);
+function metadataFromText() {
+  const raw = document.getElementById("metadataInput").value;
+  const metadata = {};
+  const lines = raw.split(/\r?\n/);
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    const separator = line.indexOf("=");
+    if (separator <= 0) {
+      throw new Error(`Invalid metadata line ${i + 1}: use key=value format.`);
+    }
+
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim();
+    if (!key) {
+      throw new Error(`Invalid metadata line ${i + 1}: key cannot be empty.`);
+    }
+
+    metadata[key] = value;
+  }
+
+  return metadata;
+}
+
+function parseStaleIntervalText() {
+  const raw = document.getElementById("staleInterval").value.trim().toLowerCase();
+  if (!raw) return null;
+  if (!STALE_INTERVAL_RE.test(raw)) {
+    throw new Error("Invalid stale interval. Use d/h/m format like 2d5h10m, 5h, or 30m.");
+  }
+  STALE_INTERVAL_PART_RE.lastIndex = 0;
+  let match;
+  while ((match = STALE_INTERVAL_PART_RE.exec(raw)) !== null) {
+    if (Number(match[1]) <= 0) {
+      throw new Error("Invalid stale interval. Segment values must be positive integers.");
+    }
+  }
+  return raw;
+}
+
+function syncSeverityOptions() {
+  const eventType = document.getElementById("eventType").value;
+  const severitySelect = document.getElementById("severity");
+  const current = severitySelect.value;
+  const allowed = ALLOWED_SEVERITIES_BY_EVENT_TYPE[eventType] || ["info"];
+
+  severitySelect.innerHTML = allowed
+    .map((severity) => `<option value="${severity}">${severity}</option>`)
+    .join("");
+  severitySelect.value = allowed.includes(current) ? current : allowed[0];
 }
 
 function setPreview(payload) {
@@ -63,14 +122,11 @@ async function sendEventFromForm() {
     severity: document.getElementById("severity").value,
     message: document.getElementById("eventMessage").value.trim(),
     source: document.getElementById("source").value,
-    metadata: metadataFromTemplate(),
+    metadata: metadataFromText(),
   };
 
-  const interval = document.getElementById("heartbeatInterval").value;
-  if (interval) payload.expected_green_interval_seconds = Number(interval);
-
-  const expiresAt = toUtcIso(document.getElementById("eventExpiresAt").value);
-  if (expiresAt) payload.expires_at = expiresAt;
+  const staleInterval = parseStaleIntervalText();
+  if (staleInterval) payload.stale_interval = staleInterval;
 
   setPreview(payload);
 
@@ -118,12 +174,16 @@ function wireSender() {
   const eventForm = document.getElementById("eventModeForm");
   const ackForm = document.getElementById("ackModeForm");
   const sendBtn = document.getElementById("sendTestMessageBtn");
+  const eventTypeSelect = document.getElementById("eventType");
 
   modeSelect.addEventListener("change", () => {
     const eventMode = modeSelect.value === "event";
     eventForm.classList.toggle("hidden", !eventMode);
     ackForm.classList.toggle("hidden", eventMode);
   });
+
+  eventTypeSelect.addEventListener("change", syncSeverityOptions);
+  eventTypeSelect.addEventListener("input", syncSeverityOptions);
 
   sendBtn.addEventListener("click", async () => {
     try {
@@ -140,6 +200,7 @@ function wireSender() {
 
 async function start() {
   wireSender();
+  syncSeverityOptions();
   await hydrateAckSelector();
 }
 

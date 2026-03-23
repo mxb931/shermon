@@ -44,6 +44,28 @@ def _ensure_column(table: str, column: str, ddl: str) -> None:
         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
 
 
+def _backfill_stale_interval_seconds() -> None:
+    inspector = inspect(engine)
+    if "entity_status" not in inspector.get_table_names():
+        return
+
+    existing = {c["name"] for c in inspector.get_columns("entity_status")}
+    if "stale_interval_seconds" not in existing or "expected_green_interval_seconds" not in existing:
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE entity_status
+                SET stale_interval_seconds = expected_green_interval_seconds
+                WHERE stale_interval_seconds IS NULL
+                  AND expected_green_interval_seconds IS NOT NULL
+                """
+            )
+        )
+
+
 def _drop_incident_category_if_present() -> None:
     inspector = inspect(engine)
     if "incident_events" not in inspector.get_table_names():
@@ -139,8 +161,10 @@ def ensure_schema_compat() -> None:
     _drop_incident_category_if_present()
     _ensure_column("incident_events", "expires_at", "expires_at DATETIME")
     _ensure_column("entity_status", "expected_green_interval_seconds", "expected_green_interval_seconds INTEGER")
+    _ensure_column("entity_status", "stale_interval_seconds", "stale_interval_seconds INTEGER")
     _ensure_column("entity_status", "last_checkin_at", "last_checkin_at DATETIME")
     _ensure_column("entity_status", "disabled_at", "disabled_at DATETIME")
+    _backfill_stale_interval_seconds()
 
 
 async def _sweeper_loop() -> None:
@@ -198,9 +222,6 @@ async def post_event(
     _: None = Depends(require_ingest_key),
     db: Session = Depends(get_db),
 ) -> EventAck:
-    if event.expires_at is not None and _is_expired(event.expires_at):
-        raise HTTPException(status_code=422, detail="expires_at must be in the future")
-
     accepted, deduplicated, sequence, payload = ingest_event(db, event)
     if payload:
         await manager.broadcast(payload)

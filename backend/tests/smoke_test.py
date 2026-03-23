@@ -79,19 +79,88 @@ status, _ = request(
 check("bad API key returns 401", status == 401)
 
 
-print("\n--- Expired event validation ---")
-expired_event = event(
-    f"evt-expired-{RUN_ID}",
-    f"EXP_CHECK_{RUN_ID}",
+print("\n--- Stale interval validation ---")
+invalid_stale_interval = event(
+    f"evt-stale-bad-{RUN_ID}",
+    f"STALE_BAD_{RUN_ID}",
     "store-104",
     "payments",
     "problem",
     "critical",
-    "Expired event",
+    "Invalid stale interval",
 )
-expired_event["expires_at"] = "2000-01-01T00:00:00Z"
-status, _ = request("POST", "/api/v1/events", expired_event)
-check("past expires_at returns 422", status == 422)
+invalid_stale_interval["stale_interval"] = "10s"
+status, _ = request("POST", "/api/v1/events", invalid_stale_interval)
+check("invalid stale_interval returns 422", status == 422)
+
+valid_stale_interval = event(
+    f"evt-stale-good-{RUN_ID}",
+    f"STALE_GOOD_{RUN_ID}",
+    "store-104",
+    "network",
+    "problem",
+    "warning",
+    "Valid stale interval",
+)
+valid_stale_interval["stale_interval"] = "2d5h10m"
+status, body = request("POST", "/api/v1/events", valid_stale_interval)
+check("valid stale_interval accepted", body.get("accepted") is True, body)
+
+legacy_expected_field = event(
+    f"evt-legacy-expected-{RUN_ID}",
+    f"LEG_EXP_{RUN_ID}",
+    "store-104",
+    "network",
+    "problem",
+    "warning",
+    "Legacy expected field",
+)
+legacy_expected_field["expected_green_interval_seconds"] = 120
+status, _ = request("POST", "/api/v1/events", legacy_expected_field)
+check("legacy expected_green_interval_seconds rejected", status == 422)
+
+legacy_expires_field = event(
+    f"evt-legacy-exp-{RUN_ID}",
+    f"LEG_EXPIRES_{RUN_ID}",
+    "store-104",
+    "network",
+    "problem",
+    "warning",
+    "Legacy expires field",
+)
+legacy_expires_field["expires_at"] = "2099-01-01T00:00:00Z"
+status, _ = request("POST", "/api/v1/events", legacy_expires_field)
+check("legacy event expires_at rejected", status == 422)
+
+
+print("\n--- Event type and severity validation ---")
+status, _ = request(
+    "POST",
+    "/api/v1/events",
+    event(f"evt-inv-s1-{RUN_ID}", f"INV_SEV1_{RUN_ID}", "store-101", "network", "problem", "info", "Invalid combo"),
+)
+check("problem+info rejected", status == 422)
+
+status, _ = request(
+    "POST",
+    "/api/v1/events",
+    event(f"evt-inv-s2-{RUN_ID}", f"INV_SEV2_{RUN_ID}", "store-101", "network", "recovery", "warning", "Invalid combo"),
+)
+check("recovery+warning rejected", status == 422)
+
+status, _ = request(
+    "POST",
+    "/api/v1/events",
+    event(f"evt-inv-s3-{RUN_ID}", f"INV_SEV3_{RUN_ID}", "store-101", "network", "enable", "critical", "Invalid combo"),
+)
+check("enable+critical rejected", status == 422)
+
+status, _ = request(
+    "POST",
+    "/api/v1/events",
+    event(f"evt-inv-s4-{RUN_ID}", f"INV_SEV4_{RUN_ID}", "store-101", "network", "disable", "warning", "Invalid combo"),
+)
+check("disable+warning rejected", status == 422)
 
 
 print("\n--- First problem event (critical) ---")
@@ -154,9 +223,9 @@ check("critical alert accepted", body.get("accepted") is True, body)
 status, body = request(
     "POST",
     "/api/v1/events",
-    event(f"evt-T06-{RUN_ID}", f"LOY_OK_{RUN_ID}", "store-205", "loyalty", "problem", "info", "Loyalty check OK"),
+    event(f"evt-T06-{RUN_ID}", f"LOY_OK_{RUN_ID}", "store-205", "loyalty", "recovery", "info", "Loyalty recovered"),
 )
-check("green info signal accepted", body.get("accepted") is True, body)
+check("recovery signal accepted", body.get("accepted") is True, body)
 
 
 print("\n--- Bootstrap endpoint ---")
@@ -185,6 +254,16 @@ check(
     "inventory status is yellow (unresolved warning)",
     store_104_inv and store_104_inv.get("status_color") == "yellow",
     store_104_inv,
+)
+check(
+    "network stale interval parsed to seconds",
+    any(
+        s.get("store_id") == "store-104"
+        and s.get("component") == "network"
+        and s.get("stale_interval_seconds") == 191400
+        for s in body.get("statuses", [])
+    ),
+    body.get("statuses", []),
 )
 
 store_205_loyalty = next(

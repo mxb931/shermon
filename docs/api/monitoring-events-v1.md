@@ -20,8 +20,7 @@ Accepts one event from Xstore.
   "severity": "critical",
   "message": "Gateway timeout after 2 retries",
   "source": "xstore-pos",
-  "expected_green_interval_seconds": 120,
-  "expires_at": "2026-03-20T16:11:00Z",
+  "stale_interval": "2h",
   "metadata": {
     "terminal_id": "lane-3",
     "order_id": "A12810"
@@ -40,13 +39,25 @@ Accepts one event from Xstore.
 - `message`: operator-readable summary.
 - `source`: emitter name in Xstore.
 - `happened_at`: stamped automatically by the API at ingest time.
-- `expected_green_interval_seconds`: optional heartbeat expectation. If omitted, timeout-to-purple is disabled.
-- `expires_at`: optional datetime. If in the past, request is rejected with `422`.
+- `stale_interval`: optional stale timeout duration using only `d`, `h`, and `m` units (for example `2d5h10m`, `4h`, `30m`). If omitted, timeout-to-purple is disabled.
 - `metadata`: optional key-value context map.
 
 Green reset behavior:
 
 - If an incoming event resolves to green/OK while the component is currently `red`, `yellow`, or `purple`, SherMon clears all active incidents for that component and resets component status to `green`.
+
+Severity rules by event type:
+
+- `problem`: `warning` or `critical` only.
+- `recovery`: `info` only.
+- `enable`: `info` only.
+- `disable`: `info` only.
+- Invalid event_type/severity combinations are rejected with `422`.
+
+Active alert rule:
+
+- Only `red`, `yellow`, or `purple` conditions are considered active alerts.
+- `green` and `white` are not active alerts.
 
 ### Response payload
 
@@ -102,7 +113,7 @@ Response item fields:
 - `last_message`
 - `last_event_id`
 - `last_changed_at`
-- `expected_green_interval_seconds`
+- `stale_interval_seconds`
 - `disabled`
 
 ## Acknowledgements API

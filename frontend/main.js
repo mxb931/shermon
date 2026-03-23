@@ -13,6 +13,8 @@ const state = {
   pingTimerId: null,
 };
 
+const FILTER_ALERT_STORES = document.body.dataset.alertsFilter === "true";
+
 const statusGrid = document.getElementById("statusGrid");
 const incidentList = document.getElementById("incidentList");
 const connectionBadge = document.getElementById("connectionBadge");
@@ -23,6 +25,10 @@ const entityBackBtn = document.getElementById("entityBackBtn");
 const entityAlertsModal = document.getElementById("entityAlertsModal");
 const entityAlertsSummary = document.getElementById("entityAlertsSummary");
 const entityAlertsList = document.getElementById("entityAlertsList");
+const summaryStatusModal = document.getElementById("summaryStatusModal");
+const summaryStatusTitle = document.getElementById("summaryStatusTitle");
+const summaryStatusHint = document.getElementById("summaryStatusHint");
+const summaryStatusBody = document.getElementById("summaryStatusBody");
 
 function escapeHtml(value) {
   return String(value)
@@ -84,6 +90,90 @@ function renderSummary() {
   document.getElementById("redCount").textContent = String(counts.red);
   document.getElementById("purpleCount").textContent = String(counts.purple);
   document.getElementById("whiteCount").textContent = String(counts.white);
+
+  const chips = document.querySelectorAll(".summary .chip-button[data-status-color]");
+  for (const chip of chips) {
+    const color = chip.getAttribute("data-status-color");
+    if (!color || counts[color] === undefined) continue;
+    chip.setAttribute("aria-label", `Show ${statusLabel(color)} entities (${counts[color]})`);
+  }
+}
+
+function groupedStatusesForColor(statusColor) {
+  const filtered = Array.from(state.statuses.values())
+    .filter((status) => status.status_color === statusColor)
+    .sort((a, b) => {
+      const storeDiff = a.store_id.localeCompare(b.store_id);
+      if (storeDiff !== 0) return storeDiff;
+      return a.component.localeCompare(b.component);
+    });
+
+  const grouped = new Map();
+  for (const row of filtered) {
+    const list = grouped.get(row.store_id) || [];
+    list.push(row);
+    grouped.set(row.store_id, list);
+  }
+  return grouped;
+}
+
+function openSummaryStatusModal(statusColor) {
+  if (!summaryStatusModal || !summaryStatusTitle || !summaryStatusHint || !summaryStatusBody) return;
+
+  const modalColorClasses = [
+    "status-modal-green",
+    "status-modal-yellow",
+    "status-modal-red",
+    "status-modal-purple",
+    "status-modal-white",
+  ];
+  summaryStatusModal.classList.remove(...modalColorClasses);
+  summaryStatusModal.classList.add(`status-modal-${statusColor}`);
+
+  const grouped = groupedStatusesForColor(statusColor);
+  const colorLabel = statusLabel(statusColor);
+  summaryStatusTitle.textContent = `${colorLabel} Entities`;
+
+  const total = Array.from(grouped.values()).reduce((sum, list) => sum + list.length, 0);
+  summaryStatusHint.textContent = `${total} store/component combinations in ${colorLabel}.`;
+
+  if (!total) {
+    summaryStatusBody.innerHTML = `<div class="meta">No store/component combinations are currently ${escapeHtml(colorLabel)}.</div>`;
+  } else {
+    const groups = Array.from(grouped.entries()).map(([storeId, entries]) => {
+      const items = entries.map((row) => {
+        const component = escapeHtml(row.component);
+        const message = escapeHtml(row.last_message || "No message");
+        const changedAt = escapeHtml(new Date(row.last_changed_at).toLocaleString());
+        const activeCount = Number(row.active_incident_count || 0);
+        return `
+          <li class="summary-status-item">
+            <div><strong>${component}</strong> <span class="meta">active: ${activeCount}</span></div>
+            <div class="meta">${changedAt}</div>
+            <div>${message}</div>
+          </li>
+        `;
+      });
+
+      return `
+        <section class="summary-store-group">
+          <div class="summary-store-header">
+            <h4>${escapeHtml(storeId)}</h4>
+            <button class="summary-open-store-btn" type="button" data-open-store="${escapeHtml(storeId)}">Open store</button>
+          </div>
+          <ul class="summary-status-list">
+            ${items.join("")}
+          </ul>
+        </section>
+      `;
+    });
+
+    summaryStatusBody.innerHTML = groups.join("");
+  }
+
+  if (!summaryStatusModal.open) {
+    summaryStatusModal.showModal();
+  }
 }
 
 function buildStoreSummaries() {
@@ -123,13 +213,22 @@ function getComponentsForSelectedStore() {
 }
 
 function renderStoreGrid() {
-  const stores = buildStoreSummaries();
+  let stores = buildStoreSummaries();
   entityStatusTitle.textContent = "Stores";
   entityStatusHint.textContent = "Select a store to view component health.";
   entityBackBtn.classList.add("hidden");
 
+  if (FILTER_ALERT_STORES) {
+    stores = stores.filter(
+      (s) => s.status_color !== "green" && s.status_color !== "white"
+    );
+  }
+
   if (!stores.length) {
-    statusGrid.innerHTML = "<div class=\"meta\">No stores are reporting yet.</div>";
+    const msg = FILTER_ALERT_STORES
+      ? "No active alerts — all stores are healthy."
+      : "No stores are reporting yet.";
+    statusGrid.innerHTML = `<div class="meta">${msg}</div>`;
     return;
   }
 
@@ -488,6 +587,37 @@ function wireAckActions() {
   document.getElementById("ackCancelBtn").addEventListener("click", () => ackModal.close());
 }
 
+function wireSummaryActions() {
+  const chips = document.querySelectorAll(".summary .chip-button[data-status-color]");
+  for (const chip of chips) {
+    chip.addEventListener("click", () => {
+      const statusColor = chip.getAttribute("data-status-color");
+      if (!statusColor) return;
+      openSummaryStatusModal(statusColor);
+    });
+  }
+
+  const closeBtn = document.getElementById("summaryStatusCloseBtn");
+  if (closeBtn && summaryStatusModal) {
+    closeBtn.addEventListener("click", () => summaryStatusModal.close());
+  }
+
+  if (summaryStatusBody && summaryStatusModal) {
+    summaryStatusBody.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const openStoreBtn = target.closest("[data-open-store]");
+      if (!(openStoreBtn instanceof HTMLElement)) return;
+
+      const storeId = openStoreBtn.getAttribute("data-open-store");
+      if (!storeId) return;
+      state.selectedStoreId = storeId;
+      summaryStatusModal.close();
+      renderStatusGrid();
+    });
+  }
+}
+
 async function start() {
   try {
     await loadBootstrap();
@@ -496,6 +626,7 @@ async function start() {
   }
   wireAckActions();
   wireEntityStatusActions();
+  wireSummaryActions();
   connectWebSocket();
 }
 

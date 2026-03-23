@@ -40,7 +40,7 @@ class EntityStatus(Base):
     last_message: Mapped[str] = mapped_column(Text, default="")
     last_event_id: Mapped[str] = mapped_column(String(64), default="")
     last_changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    expected_green_interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    stale_interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     last_checkin_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     disabled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 

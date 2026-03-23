@@ -62,6 +62,14 @@ SherMon is a lightweight monitoring platform for Xstore operations. It ingests i
 
 - Status levels are represented as `green`, `yellow`, `red`, `purple`, and `white`.
 - Hierarchy precedence for aggregate store status is: `red` -> `yellow` -> `purple` -> `green` -> `white`.
+- Active alerts are only `red`, `yellow`, and `purple` states.
+- `green` and `white` states are never considered active alerts.
+- Event type and severity combinations are validated at ingest:
+  - `problem`: `warning` or `critical`
+  - `recovery`: `info`
+  - `enable`: `info`
+  - `disable`: `info`
+- Event timing uses `stale_interval` input (`d`/`h`/`m` format) and is persisted as `stale_interval_seconds` on entity status.
 - Green-reset rule: when an incoming event resolves to green for a component that is currently red/yellow/purple, SherMon clears prior active incidents for that component and resets active count to zero.
 
 ## Frontend Technical Details

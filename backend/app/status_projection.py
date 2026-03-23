@@ -15,11 +15,21 @@ def status_from_event(event_type: str, severity: str) -> str:
     return "green"
 
 
-def should_mark_active(event_type: str) -> bool:
-    return event_type == "problem"
+def is_active_alert_color(status_color: str) -> bool:
+    return status_color in {"red", "yellow", "purple"}
 
 
-def updated_count(current: int, event_type: str, closed_for_entity: int = 0, deduplicated: bool = False) -> int:
+def should_mark_active(event_type: str, status_color: str) -> bool:
+    return event_type == "problem" and is_active_alert_color(status_color)
+
+
+def updated_count(
+    current: int,
+    event_type: str,
+    closed_for_entity: int = 0,
+    deduplicated: bool = False,
+    increment_active: bool = True,
+) -> int:
     if event_type == "disable":
         return 0
 
@@ -27,7 +37,7 @@ def updated_count(current: int, event_type: str, closed_for_entity: int = 0, ded
         return 0
 
     if event_type == "problem":
-        if deduplicated:
+        if deduplicated or not increment_active:
             return current
         return current + 1
 
