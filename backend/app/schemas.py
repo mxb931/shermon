@@ -5,7 +5,8 @@ from pydantic import BaseModel, Field
 
 
 Severity = Literal["info", "warning", "critical"]
-EventType = Literal["problem", "recovery"]
+StatusColor = Literal["green", "yellow", "red", "purple", "white"]
+EventType = Literal["problem", "recovery", "disable", "enable"]
 
 
 class EventIn(BaseModel):
@@ -18,7 +19,8 @@ class EventIn(BaseModel):
     severity: Severity
     message: str = Field(min_length=1, max_length=4000)
     source: str = Field(min_length=1, max_length=128)
-    happened_at: datetime
+    expected_green_interval_seconds: Optional[int] = Field(default=None, ge=1)
+    expires_at: Optional[datetime] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -31,11 +33,30 @@ class EventAck(BaseModel):
 class EntityStatusOut(BaseModel):
     store_id: str
     component: str
-    status_color: str
+    status_color: StatusColor
     active_incident_count: int
     last_message: str
     last_event_id: str
     last_changed_at: datetime
+    expected_green_interval_seconds: Optional[int] = None
+    disabled: bool = False
+
+
+class AckIn(BaseModel):
+    event_id: str = Field(min_length=6, max_length=64)
+    ack_message: str = Field(min_length=1, max_length=4000)
+    expires_at: datetime
+    ack_by: Optional[str] = Field(default=None, min_length=1, max_length=128)
+
+
+class AckOut(BaseModel):
+    event_id: str
+    store_id: str
+    component: str
+    ack_message: str
+    expires_at: datetime
+    acknowledged_at: datetime
+    ack_by: Optional[str] = None
 
 
 class IncidentEventOut(BaseModel):
@@ -56,3 +77,4 @@ class BootstrapOut(BaseModel):
     latest_sequence: int
     statuses: list[EntityStatusOut]
     recent_events: list[IncidentEventOut]
+    active_acks: list[AckOut]

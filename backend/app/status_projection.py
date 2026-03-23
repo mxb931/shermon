@@ -2,6 +2,10 @@ from datetime import datetime
 
 
 def status_from_event(event_type: str, severity: str) -> str:
+    if event_type == "disable":
+        return "white"
+    if event_type == "enable":
+        return "green"
     if event_type == "recovery":
         return "green"
     if severity == "critical":
@@ -16,6 +20,12 @@ def should_mark_active(event_type: str) -> bool:
 
 
 def updated_count(current: int, event_type: str, closed_for_entity: int = 0, deduplicated: bool = False) -> int:
+    if event_type == "disable":
+        return 0
+
+    if event_type == "enable":
+        return 0
+
     if event_type == "problem":
         if deduplicated:
             return current

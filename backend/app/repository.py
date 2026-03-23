@@ -1,23 +1,26 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import BroadcastEvent, EntityStatus, IncidentEvent, StreamCursor
-from .schemas import BootstrapOut, EntityStatusOut, EventIn, IncidentEventOut
+from .models import Acknowledgement, BroadcastEvent, EntityStatus, IncidentEvent, StreamCursor
+from .schemas import AckIn, AckOut, BootstrapOut, EntityStatusOut, EventIn, IncidentEventOut
 from .status_projection import should_change_state, should_mark_active, status_from_event, updated_count
 
 
 def _to_utc_naive(dt: datetime) -> datetime:
     """Strip timezone info after converting to UTC, for consistent SQLite storage."""
     if dt.tzinfo is not None:
-        dt = dt.utctimetuple()
-        return datetime(*dt[:6])
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt
+
+
+def _utc_now_naive() -> datetime:
+    return datetime.utcnow()
 
 
 def _cursor(db: Session) -> StreamCursor:
@@ -45,6 +48,9 @@ def _entity_status(db: Session, store_id: str, component: str) -> EntityStatus:
             last_message="",
             last_event_id="",
             last_changed_at=datetime.utcnow(),
+            expected_green_interval_seconds=None,
+            last_checkin_at=datetime.utcnow(),
+            disabled_at=None,
         )
         db.add(row)
         db.flush()
@@ -62,6 +68,19 @@ def _close_recoveries(db: Session, event: EventIn) -> int:
         base_query = base_query.where(IncidentEvent.dedup_key == event.dedup_key)
 
     rows = db.scalars(base_query).all()
+    for row in rows:
+        row.active = False
+    return len(rows)
+
+
+def _close_all_active_for_entity(db: Session, store_id: str, component: str) -> int:
+    rows = db.scalars(
+        select(IncidentEvent).where(
+            IncidentEvent.store_id == store_id,
+            IncidentEvent.component == component,
+            IncidentEvent.active.is_(True),
+        )
+    ).all()
     for row in rows:
         row.active = False
     return len(rows)
@@ -86,6 +105,10 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
     closed_count = 0
     if event.event_type == "recovery":
         closed_count = _close_recoveries(db, event)
+    elif event.event_type == "disable":
+        closed_count = _close_all_active_for_entity(db, event.store_id, event.component)
+
+    happened_at_naive = _utc_now_naive()
 
     incident = IncidentEvent(
         event_id=event.event_id,
@@ -98,13 +121,29 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
         message=event.message,
         source=event.source,
         metadata_json=json.dumps(event.metadata),
-        happened_at=_to_utc_naive(event.happened_at),
+        happened_at=happened_at_naive,
+        expires_at=_to_utc_naive(event.expires_at) if event.expires_at else None,
         active=should_mark_active(event.event_type) and not duplicate_problem,
     )
     db.add(incident)
 
     status = _entity_status(db, event.store_id, event.component)
     next_color = status_from_event(event.event_type, event.severity)
+
+    status.last_checkin_at = happened_at_naive
+    if event.expected_green_interval_seconds is not None:
+        status.expected_green_interval_seconds = event.expected_green_interval_seconds
+
+    if event.event_type == "disable":
+        status.disabled_at = happened_at_naive
+    elif event.event_type == "enable":
+        status.disabled_at = None
+
+    if status.disabled_at is not None and event.event_type not in {"enable", "disable"}:
+        incident.active = False
+        next_color = "white"
+        closed_count = max(closed_count, status.active_incident_count)
+
     status.active_incident_count = updated_count(
         status.active_incident_count,
         event.event_type,
@@ -113,7 +152,6 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
     )
     status.last_message = event.message
     status.last_event_id = event.event_id
-    happened_at_naive = _to_utc_naive(event.happened_at)
     if should_change_state(status.status_color, next_color, happened_at_naive, status.last_changed_at):
         status.status_color = next_color
         status.last_changed_at = happened_at_naive
@@ -135,6 +173,7 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
             "message": event.message,
             "source": event.source,
             "happened_at": happened_at_naive.isoformat(),
+            "expires_at": incident.expires_at.isoformat() if incident.expires_at else None,
             "active": incident.active,
         },
         "status": {
@@ -145,6 +184,8 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
             "last_message": status.last_message,
             "last_event_id": status.last_event_id,
             "last_changed_at": status.last_changed_at.isoformat(),
+            "expected_green_interval_seconds": status.expected_green_interval_seconds,
+            "disabled": status.disabled_at is not None,
         },
         "deduplicated": duplicate_problem,
     }
@@ -172,6 +213,8 @@ def bootstrap(db: Session, recent_limit: int) -> BootstrapOut:
         select(IncidentEvent).order_by(IncidentEvent.happened_at.desc()).limit(recent_limit)
     ).all()
 
+    active_acks = get_active_acks(db)
+
     return BootstrapOut(
         latest_sequence=cursor.latest_sequence,
         statuses=[
@@ -183,6 +226,8 @@ def bootstrap(db: Session, recent_limit: int) -> BootstrapOut:
                 last_message=s.last_message,
                 last_event_id=s.last_event_id,
                 last_changed_at=s.last_changed_at,
+                expected_green_interval_seconds=s.expected_green_interval_seconds,
+                disabled=s.disabled_at is not None,
             )
             for s in statuses
         ],
@@ -202,13 +247,154 @@ def bootstrap(db: Session, recent_limit: int) -> BootstrapOut:
             )
             for e in recent
         ],
+        active_acks=active_acks,
     )
 
 
 def get_summary_counts(db: Session) -> dict[str, int]:
     rows = db.execute(select(EntityStatus.status_color, func.count(EntityStatus.id)).group_by(EntityStatus.status_color)).all()
-    counts = {"green": 0, "yellow": 0, "red": 0}
+    counts = {"green": 0, "yellow": 0, "red": 0, "purple": 0, "white": 0}
     for color, count in rows:
         if color in counts:
             counts[color] = count
     return counts
+
+
+def create_ack(db: Session, ack: AckIn) -> tuple[Optional[AckOut], dict]:
+    incident = db.scalar(select(IncidentEvent).where(IncidentEvent.event_id == ack.event_id))
+    if incident is None:
+        return None, {}
+
+    row = db.scalar(select(Acknowledgement).where(Acknowledgement.event_id == ack.event_id))
+    if row is None:
+        row = Acknowledgement(
+            event_id=ack.event_id,
+            store_id=incident.store_id,
+            component=incident.component,
+            ack_message=ack.ack_message,
+            ack_by=ack.ack_by,
+            expires_at=_to_utc_naive(ack.expires_at),
+            acknowledged_at=_utc_now_naive(),
+            active=True,
+        )
+        db.add(row)
+    else:
+        row.ack_message = ack.ack_message
+        row.ack_by = ack.ack_by
+        row.expires_at = _to_utc_naive(ack.expires_at)
+        row.acknowledged_at = _utc_now_naive()
+        row.active = True
+
+    db.commit()
+
+    ack_out = AckOut(
+        event_id=row.event_id,
+        store_id=row.store_id,
+        component=row.component,
+        ack_message=row.ack_message,
+        expires_at=row.expires_at,
+        acknowledged_at=row.acknowledged_at,
+        ack_by=row.ack_by,
+    )
+    payload = {
+        "kind": "ack_update",
+        "ack": ack_out.model_dump(mode="json"),
+    }
+    return ack_out, payload
+
+
+def get_active_acks(db: Session) -> list[AckOut]:
+    rows = db.scalars(
+        select(Acknowledgement)
+        .where(Acknowledgement.active.is_(True))
+        .order_by(Acknowledgement.expires_at.asc())
+    ).all()
+    return [
+        AckOut(
+            event_id=row.event_id,
+            store_id=row.store_id,
+            component=row.component,
+            ack_message=row.ack_message,
+            expires_at=row.expires_at,
+            acknowledged_at=row.acknowledged_at,
+            ack_by=row.ack_by,
+        )
+        for row in rows
+    ]
+
+
+def expire_ack(db: Session, event_id: str) -> Optional[dict]:
+    row = db.scalar(
+        select(Acknowledgement).where(
+            Acknowledgement.event_id == event_id,
+            Acknowledgement.active.is_(True),
+        )
+    )
+    if row is None:
+        return None
+    row.active = False
+    db.commit()
+    return {"kind": "ack_expired", "event_id": event_id}
+
+
+def sweep_expired_acks(db: Session) -> list[dict]:
+    now = _utc_now_naive()
+    rows = db.scalars(
+        select(Acknowledgement).where(
+            Acknowledgement.active.is_(True),
+            Acknowledgement.expires_at <= now,
+        )
+    ).all()
+    payloads = []
+    for row in rows:
+        row.active = False
+        payloads.append({"kind": "ack_expired", "event_id": row.event_id})
+
+    if payloads:
+        db.commit()
+    return payloads
+
+
+def sweep_timeout_statuses(db: Session) -> list[dict]:
+    now = _utc_now_naive()
+    rows = db.scalars(
+        select(EntityStatus).where(
+            EntityStatus.disabled_at.is_(None),
+            EntityStatus.expected_green_interval_seconds.is_not(None),
+            EntityStatus.last_checkin_at.is_not(None),
+        )
+    ).all()
+
+    payloads: list[dict] = []
+    for row in rows:
+        assert row.last_checkin_at is not None
+        assert row.expected_green_interval_seconds is not None
+        elapsed = (now - row.last_checkin_at).total_seconds()
+        if elapsed <= row.expected_green_interval_seconds:
+            continue
+        if row.status_color == "purple":
+            continue
+
+        row.status_color = "purple"
+        row.last_changed_at = now
+        row.last_message = "Heartbeat timeout: expected green check-in was missed"
+        payloads.append(
+            {
+                "kind": "status_timeout",
+                "status": {
+                    "store_id": row.store_id,
+                    "component": row.component,
+                    "status_color": row.status_color,
+                    "active_incident_count": row.active_incident_count,
+                    "last_message": row.last_message,
+                    "last_event_id": row.last_event_id,
+                    "last_changed_at": row.last_changed_at.isoformat(),
+                    "expected_green_interval_seconds": row.expected_green_interval_seconds,
+                    "disabled": False,
+                },
+            }
+        )
+
+    if payloads:
+        db.commit()
+    return payloads

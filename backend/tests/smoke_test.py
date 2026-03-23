@@ -51,8 +51,16 @@ def event(event_id, dedup_key, store_id, component, event_type, severity, messag
         "severity": severity,
         "message": message,
         "source": "smoke-test",
-        "happened_at": "2026-03-20T10:00:00Z",
         "metadata": {},
+    }
+
+
+def ack_payload(event_id):
+    return {
+        "event_id": event_id,
+        "ack_message": "Investigating",
+        "ack_by": "smoke-test",
+        "expires_at": "2099-01-01T00:00:00Z",
     }
 
 
@@ -70,6 +78,21 @@ status, _ = request(
     key="wrong-key",
 )
 check("bad API key returns 401", status == 401)
+
+
+print("\n--- Expired event validation ---")
+expired_event = event(
+    f"evt-expired-{RUN_ID}",
+    f"EXP_CHECK_{RUN_ID}",
+    "store-104",
+    "payments",
+    "problem",
+    "critical",
+    "Expired event",
+)
+expired_event["expires_at"] = "2000-01-01T00:00:00Z"
+status, _ = request("POST", "/api/v1/events", expired_event)
+check("past expires_at returns 422", status == 422)
 
 
 print("\n--- First problem event (critical) ---")
@@ -158,6 +181,22 @@ counts = body.get("counts", {})
 check("has green count", "green" in counts, counts)
 check("has red count", "red" in counts, counts)
 check("has yellow count", "yellow" in counts, counts)
+check("has purple count", "purple" in counts, counts)
+check("has white count", "white" in counts, counts)
+
+
+print("\n--- Acknowledgement lifecycle ---")
+status, body = request("POST", "/api/v1/acks", ack_payload(f"evt-T03-{RUN_ID}"))
+check("ack create returns 200", status == 200, body)
+check("ack create returns same event_id", body.get("event_id") == f"evt-T03-{RUN_ID}", body)
+
+status, body = request("GET", "/api/v1/acks")
+check("ack list returns 200", status == 200, body)
+check("ack list contains new ack", any(a.get("event_id") == f"evt-T03-{RUN_ID}" for a in body), body)
+
+status, body = request("DELETE", f"/api/v1/acks/evt-T03-{RUN_ID}")
+check("ack delete returns 200", status == 200, body)
+check("ack delete marks expired true", body.get("expired") is True, body)
 
 
 passed = sum(results)

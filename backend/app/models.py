@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -23,6 +24,7 @@ class IncidentEvent(Base):
     source: Mapped[str] = mapped_column(String(128), index=True)
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     happened_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
@@ -39,6 +41,9 @@ class EntityStatus(Base):
     last_message: Mapped[str] = mapped_column(Text, default="")
     last_event_id: Mapped[str] = mapped_column(String(64), default="")
     last_changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expected_green_interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    last_checkin_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    disabled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
 class StreamCursor(Base):
@@ -55,3 +60,18 @@ class BroadcastEvent(Base):
     event_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     payload_json: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class Acknowledgement(Base):
+    __tablename__ = "acknowledgements"
+    __table_args__ = (Index("ix_ack_active_expires", "active", "expires_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    event_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    store_id: Mapped[str] = mapped_column(String(64), index=True)
+    component: Mapped[str] = mapped_column(String(128), index=True)
+    ack_message: Mapped[str] = mapped_column(Text)
+    ack_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    acknowledged_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)

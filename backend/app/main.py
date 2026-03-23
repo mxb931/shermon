@@ -1,18 +1,83 @@
+import asyncio
+from contextlib import asynccontextmanager
+from datetime import datetime
+
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .database import engine, get_db
+from .database import SessionLocal, engine, get_db
 from .models import Base
 from .realtime import manager
-from .repository import bootstrap, get_summary_counts, ingest_event
-from .schemas import BootstrapOut, EventAck, EventIn
+from .repository import (
+    bootstrap,
+    create_ack,
+    expire_ack,
+    get_active_acks,
+    get_summary_counts,
+    ingest_event,
+    sweep_expired_acks,
+    sweep_timeout_statuses,
+)
+from .schemas import AckIn, AckOut, BootstrapOut, EventAck, EventIn
 
 
-Base.metadata.create_all(bind=engine)
+def _is_expired(dt: datetime) -> bool:
+    if dt.tzinfo is not None:
+        return dt.astimezone() <= datetime.now().astimezone()
+    return dt <= datetime.utcnow()
 
-app = FastAPI(title="SherMon API", version="0.1.0")
+
+def _ensure_column(table: str, column: str, ddl: str) -> None:
+    inspector = inspect(engine)
+    if table not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns(table)}
+    if column in existing:
+        return
+    with engine.begin() as conn:
+        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+
+
+def ensure_schema_compat() -> None:
+    Base.metadata.create_all(bind=engine)
+    _ensure_column("incident_events", "expires_at", "expires_at DATETIME")
+    _ensure_column("entity_status", "expected_green_interval_seconds", "expected_green_interval_seconds INTEGER")
+    _ensure_column("entity_status", "last_checkin_at", "last_checkin_at DATETIME")
+    _ensure_column("entity_status", "disabled_at", "disabled_at DATETIME")
+
+
+async def _sweeper_loop() -> None:
+    while True:
+        await asyncio.sleep(60)
+        db = SessionLocal()
+        try:
+            timeout_payloads = sweep_timeout_statuses(db)
+            ack_payloads = sweep_expired_acks(db)
+        finally:
+            db.close()
+
+        for payload in timeout_payloads + ack_payloads:
+            await manager.broadcast(payload)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    ensure_schema_compat()
+    sweeper = asyncio.create_task(_sweeper_loop())
+    try:
+        yield
+    finally:
+        sweeper.cancel()
+        try:
+            await sweeper
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="SherMon API", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,10 +104,47 @@ async def post_event(
     _: None = Depends(require_ingest_key),
     db: Session = Depends(get_db),
 ) -> EventAck:
+    if event.expires_at is not None and _is_expired(event.expires_at):
+        raise HTTPException(status_code=422, detail="expires_at must be in the future")
+
     accepted, deduplicated, sequence, payload = ingest_event(db, event)
     if payload:
         await manager.broadcast(payload)
     return EventAck(accepted=accepted, deduplicated=deduplicated, sequence=sequence)
+
+
+@app.get("/api/v1/acks", response_model=list[AckOut])
+def get_acks(db: Session = Depends(get_db)) -> list[AckOut]:
+    return get_active_acks(db)
+
+
+@app.post("/api/v1/acks", response_model=AckOut)
+async def post_ack(
+    ack: AckIn,
+    _: None = Depends(require_ingest_key),
+    db: Session = Depends(get_db),
+) -> AckOut:
+    if _is_expired(ack.expires_at):
+        raise HTTPException(status_code=422, detail="expires_at must be in the future")
+
+    ack_out, payload = create_ack(db, ack)
+    if ack_out is None:
+        raise HTTPException(status_code=404, detail="event_id not found")
+    await manager.broadcast(payload)
+    return ack_out
+
+
+@app.delete("/api/v1/acks/{event_id}")
+async def delete_ack(
+    event_id: str,
+    _: None = Depends(require_ingest_key),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    payload = expire_ack(db, event_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="acknowledgement not found")
+    await manager.broadcast(payload)
+    return {"expired": True}
 
 
 @app.get("/api/v1/bootstrap", response_model=BootstrapOut)
