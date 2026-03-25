@@ -451,12 +451,12 @@ section {
 
 #entityAlertsModal {
   box-sizing: border-box;
-  max-width: 1080px;
-  width: min(1080px, calc(100vw - 2rem));
-  max-height: 82vh;
+  max-width: 1040px;
+  width: min(1040px, calc(100vw - 2rem));
+  max-height: 84vh;
   padding: 0;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: hidden;
 }
 
 #entityAlertsForm {
@@ -464,12 +464,12 @@ section {
   display: grid;
   grid-template-rows: auto auto 1fr auto;
   gap: 0.7rem;
-  min-height: min(78vh, 740px);
+  height: min(78vh, 720px);
   min-width: 0;
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
-  overflow-y: visible;
+  overflow-y: hidden;
 }
 
 .entity-alerts-grid {
@@ -487,6 +487,7 @@ section {
   border-radius: 8px;
   padding: 0.65rem;
   background: #fffdf9;
+  height: 100%;
   min-height: 0;
   min-width: 0;
   overflow-x: hidden;
@@ -559,12 +560,46 @@ section {
 .events-log-panel {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.events-log-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.events-limit-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.events-limit-control select {
+  border: 1px solid #4e585f;
+  border-radius: 6px;
+  padding: 0.18rem 0.36rem;
+  font: inherit;
+  font-weight: 700;
+  color: #dbe6ee;
+  background: linear-gradient(180deg, #2a3239 0%, #1e252b 100%);
+}
+
+.events-limit-control select:focus-visible {
+  outline: 2px solid #8eb3ce;
+  outline-offset: 1px;
 }
 
 .events-log-panel .log-box {
   margin-top: 0.5rem;
   flex: 1;
-  max-height: none;
+  max-height: 100%;
+  height: 100%;
   min-height: 0;
   overflow-y: auto;
   overflow-x: auto;

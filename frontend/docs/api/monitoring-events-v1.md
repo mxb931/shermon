@@ -88,6 +88,7 @@ Query parameters:
 - `store_id` (required)
 - `component` (required)
 - `hours` (optional, default `24`, min `1`, max `168`)
+- `limit` (optional, default `1000`, min `50`, max `2000`)
 
 Response behavior:
 

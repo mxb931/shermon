@@ -13,7 +13,11 @@ const state = {
   selectedStoreId: null,
   entityAlertsContext: null,
   pingTimerId: null,
+  entityEventHistoryLimit: 1000,
 };
+
+const ENTITY_EVENT_HISTORY_LIMIT = 1000;
+const ENTITY_EVENT_HISTORY_LIMIT_OPTIONS = [250, 500, 1000, 2000];
 
 const FILTER_ALERT_STORES = document.body.dataset.alertsFilter === "true";
 
@@ -28,6 +32,7 @@ let entityAlertsModal = null;
 let entityAlertsSummary = null;
 let entityAlertsList = null;
 let entityEventsLog = null;
+let entityEventsLimitSelect = null;
 const summaryStatusModal = document.getElementById("summaryStatusModal");
 const summaryStatusTitle = document.getElementById("summaryStatusTitle");
 const summaryStatusHint = document.getElementById("summaryStatusHint");
@@ -48,7 +53,18 @@ function ensureEntityAlertsModal() {
               <ul id="entityAlertsList" class="incident-list compact active-alerts-static-list"></ul>
             </section>
             <section class="entity-alerts-panel events-log-panel">
-              <h4>Last 24 Hours Events</h4>
+              <div class="events-log-header-row">
+                <h4>Last 24 Hours Events</h4>
+                <label class="events-limit-control" for="entityEventsLimitSelect">
+                  Rows
+                  <select id="entityEventsLimitSelect" aria-label="Event history row limit">
+                    <option value="250">250</option>
+                    <option value="500">500</option>
+                    <option value="1000" selected>1000</option>
+                    <option value="2000">2000</option>
+                  </select>
+                </label>
+              </div>
               <p class="meta">All event types for this component, newest first.</p>
               <div class="log-box" role="region" aria-label="Last 24 hours events log">
                 <pre id="entityEventsLog" class="log-output">Loading events...</pre>
@@ -67,6 +83,10 @@ function ensureEntityAlertsModal() {
   entityAlertsSummary = document.getElementById("entityAlertsSummary");
   entityAlertsList = document.getElementById("entityAlertsList");
   entityEventsLog = document.getElementById("entityEventsLog");
+  entityEventsLimitSelect = document.getElementById("entityEventsLimitSelect");
+  if (entityEventsLimitSelect) {
+    entityEventsLimitSelect.value = String(state.entityEventHistoryLimit);
+  }
 }
 
 function truncateText(value, maxLength) {
@@ -364,8 +384,7 @@ function renderStatusGrid() {
 
 function renderIncidentList() {
   const visible = state.incidents
-    .filter((event) => !state.acks.has(event.event_id))
-    .sort(compareIncidentsByNewest);
+    .filter((event) => !state.acks.has(event.event_id));
   const rows = visible.slice(0, 150).map((event) => `
     <li class="incident-item" data-event-id="${event.event_id}">
       <strong>[${escapeHtml(event.severity)}]</strong> ${escapeHtml(event.store_id)}/${escapeHtml(event.component)} ${escapeHtml(event.event_type)}<br />
@@ -521,6 +540,35 @@ function renderEntityEventsLog(historyEvents) {
   entityEventsLog.textContent = [header, divider, ...lines].join("\n");
 }
 
+function currentEntityHistoryLimit() {
+  const selected = Number(state.entityEventHistoryLimit);
+  if (Number.isFinite(selected) && selected > 0) {
+    return selected;
+  }
+  return ENTITY_EVENT_HISTORY_LIMIT;
+}
+
+async function loadEntityEventsHistory(storeId, component) {
+  if (entityEventsLog) {
+    entityEventsLog.textContent = "Loading events...";
+  }
+
+  const query = new URLSearchParams({
+    store_id: storeId,
+    component,
+    hours: "24",
+    limit: String(currentEntityHistoryLimit()),
+  });
+
+  const response = await fetch(`${API_BASE}/api/v1/entity-events?${query.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Unable to load 24-hour event history (HTTP ${response.status}).`);
+  }
+
+  const historyEvents = await response.json();
+  renderEntityEventsLog(historyEvents);
+}
+
 function openAckModal(eventId) {
   const incident = state.incidents.find((item) => item.event_id === eventId);
   state.pendingAckEventId = eventId;
@@ -572,6 +620,9 @@ async function openEntityAlertsModal(storeId, component) {
   if (entityEventsLog) {
     entityEventsLog.textContent = "Loading events...";
   }
+  if (entityEventsLimitSelect) {
+    entityEventsLimitSelect.value = String(currentEntityHistoryLimit());
+  }
   if (!entityAlertsModal.open) {
     entityAlertsModal.showModal();
   }
@@ -579,7 +630,7 @@ async function openEntityAlertsModal(storeId, component) {
   const query = new URLSearchParams({ store_id: storeId, component });
   const [alertsResult, historyResult] = await Promise.allSettled([
     fetch(`${API_BASE}/api/v1/active-alerts?${query.toString()}`),
-    fetch(`${API_BASE}/api/v1/entity-events?${query.toString()}&hours=24`),
+    loadEntityEventsHistory(storeId, component),
   ]);
 
   if (alertsResult.status === "fulfilled") {
@@ -629,18 +680,10 @@ async function openEntityAlertsModal(storeId, component) {
     entityAlertsList.innerHTML = "<li class=\"incident-item\">Unable to load active alerts.</li>";
   }
 
-  if (historyResult.status === "fulfilled") {
-    const response = historyResult.value;
-    if (response.ok) {
-      const historyEvents = await response.json();
-      renderEntityEventsLog(historyEvents);
-    } else if (entityEventsLog) {
-      entityEventsLog.textContent = `Unable to load 24-hour event history (HTTP ${response.status}).`;
-    }
-  } else {
+  if (historyResult.status !== "fulfilled") {
     console.error(historyResult.reason);
     if (entityEventsLog) {
-      entityEventsLog.textContent = "Unable to load 24-hour event history.";
+      entityEventsLog.textContent = historyResult.reason?.message || "Unable to load 24-hour event history.";
     }
   }
 }
@@ -742,6 +785,25 @@ function wireEntityStatusActions() {
     state.selectedStoreId = null;
     renderStatusGrid();
   });
+
+  if (entityEventsLimitSelect) {
+    entityEventsLimitSelect.addEventListener("change", async () => {
+      const selected = Number(entityEventsLimitSelect.value);
+      if (ENTITY_EVENT_HISTORY_LIMIT_OPTIONS.includes(selected)) {
+        state.entityEventHistoryLimit = selected;
+      }
+      if (!entityAlertsModal.open || !state.entityAlertsContext) return;
+      const { storeId, component } = state.entityAlertsContext;
+      try {
+        await loadEntityEventsHistory(storeId, component);
+      } catch (error) {
+        console.error(error);
+        if (entityEventsLog) {
+          entityEventsLog.textContent = error?.message || "Unable to load 24-hour event history.";
+        }
+      }
+    });
+  }
 }
 
 function wireAckActions() {

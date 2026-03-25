@@ -404,6 +404,7 @@ Query parameters:
 | `store_id` | string | Yes | Exact store/entity identifier |
 | `component` | string | Yes | Exact component within store |
 | `hours` | integer | No | Lookback window in hours, default `24`, min `1`, max `168` |
+| `limit` | integer | No | Max rows returned, default `1000`, min `50`, max `2000` |
 
 Response: array of events ordered newest first.
 
@@ -415,7 +416,7 @@ Notes:
 Example request:
 
 ```bash
-curl "http://127.0.0.1:8000/api/v1/entity-events?store_id=store-104&component=payments&hours=24"
+curl "http://127.0.0.1:8000/api/v1/entity-events?store_id=store-104&component=payments&hours=24&limit=1000"
 ```
 
 ---

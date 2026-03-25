@@ -333,8 +333,10 @@ def get_recent_events_for_entity(
     store_id: str,
     component: str,
     hours: int = 24,
+    limit: int = 1000,
 ) -> list[IncidentEventOut]:
     safe_hours = min(max(hours, 1), 168)
+    safe_limit = min(max(limit, 50), 2000)
     since = _utc_now_naive() - timedelta(hours=safe_hours)
 
     rows = db.scalars(
@@ -345,6 +347,7 @@ def get_recent_events_for_entity(
             IncidentEvent.happened_at >= since,
         )
         .order_by(IncidentEvent.happened_at.desc())
+        .limit(safe_limit)
     ).all()
 
     return [

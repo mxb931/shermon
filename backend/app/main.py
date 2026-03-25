@@ -321,9 +321,10 @@ def get_recent_events_by_entity(
     store_id: str,
     component: str,
     hours: int = 24,
+    limit: int = 1000,
     db: Session = Depends(get_db),
 ) -> list[IncidentEventOut]:
-    return get_recent_events_for_entity(db, store_id, component, hours)
+    return get_recent_events_for_entity(db, store_id, component, hours, limit)
 
 
 @app.websocket("/ws/updates")

@@ -4,6 +4,7 @@ const badge = document.getElementById("connectionBadge");
 
 if (badge) {
   let reconnectAttempt = 0;
+  let pingTimerId = null;
 
   function updateConnectionBadge(mode) {
     badge.className = `badge ${mode}`;
@@ -23,12 +24,19 @@ if (badge) {
       reconnectAttempt = 0;
       updateConnectionBadge("connected");
       ws.send("ping");
-      setInterval(() => {
+      if (pingTimerId) {
+        clearInterval(pingTimerId);
+      }
+      pingTimerId = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send("ping");
       }, 15000);
     };
 
     ws.onclose = () => {
+      if (pingTimerId) {
+        clearInterval(pingTimerId);
+        pingTimerId = null;
+      }
       updateConnectionBadge("stale");
       const delay = reconnectDelay(reconnectAttempt);
       reconnectAttempt += 1;
