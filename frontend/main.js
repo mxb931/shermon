@@ -522,18 +522,18 @@ function formatLogTimestamp(value) {
 function formatEventLogLine(event) {
   const timestamp = formatLogTimestamp(event.happened_at);
   const severity = padOrTrim(String(event.severity || "").toUpperCase(), 8);
-  const eventType = padOrTrim(String(event.event_type || "").toUpperCase(), 7);
-  const state = padOrTrim(event.active ? "ACTIVE" : "CLOSED", 6);
-  const source = padOrTrim(event.source || "-", 16);
-  const eventId = padOrTrim(event.event_id || "-", 20);
   const message = String(event.message || "").replace(/\s+/g, " ").trim();
-  return `${timestamp} | ${severity} | ${eventType} | ${state} | ${source} | ${eventId} | ${message}`;
+  const eventType = padOrTrim(String(event.event_type || "").toUpperCase(), 7);
+  const source = padOrTrim(event.source || "-", 16);
+  const state = padOrTrim(event.active ? "ACTIVE" : "CLOSED", 6);
+  const eventId = padOrTrim(event.event_id || "-", 20);
+  return `${timestamp} | ${severity} | ${message} | ${eventType} | ${source} | ${state} | ${eventId}`;
 }
 
 function renderEntityEventsLog(historyEvents) {
   if (!entityEventsLog) return;
-  const header = "TIMESTAMP                | SEVERITY | TYPE    | STATE  | SOURCE           | EVENT_ID             | MESSAGE";
-  const divider = "-------------------------+----------+---------+--------+------------------+----------------------+------------------------------";
+  const header = "TIMESTAMP                | SEVERITY | MESSAGE | TYPE    | SOURCE           | STATE  | EVENT_ID";
+  const divider = "-------------------------+----------+---------+---------+------------------+--------+----------------------";
   const lines = historyEvents.length
     ? historyEvents.map((historyEvent) => formatEventLogLine(historyEvent))
     : ["(no events for this component in the last 24 hours)"];
