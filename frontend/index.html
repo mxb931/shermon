@@ -72,7 +72,19 @@
       <form method="dialog" id="entityAlertsForm">
         <h3>Active Alerts</h3>
         <p id="entityAlertsSummary" class="meta"></p>
-        <ul id="entityAlertsList" class="incident-list compact"></ul>
+        <div class="entity-alerts-grid">
+          <section class="entity-alerts-panel">
+            <h4>Currently Active</h4>
+            <ul id="entityAlertsList" class="incident-list compact"></ul>
+          </section>
+          <section class="entity-alerts-panel">
+            <h4>Last 24 Hours Events</h4>
+            <p class="meta">All event types for this component, newest first.</p>
+            <div class="log-box" role="region" aria-label="Last 24 hours events log">
+              <pre id="entityEventsLog" class="log-output">Loading events...</pre>
+            </div>
+          </section>
+        </div>
         <div class="btn-row">
           <button type="button" id="entityAlertsCloseBtn">Close</button>
         </div>

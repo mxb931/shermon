@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import func, select
@@ -43,6 +43,13 @@ def _to_utc_naive(dt: datetime) -> datetime:
 
 def _utc_now_naive() -> datetime:
     return datetime.utcnow()
+
+
+def _canonical_event_type(event_type: str) -> str:
+    # Keep ingest backward-compatible for legacy producers while standardizing output.
+    if event_type == "recovery":
+        return "ok"
+    return event_type
 
 
 def _cursor(db: Session) -> StreamCursor:
@@ -109,12 +116,14 @@ def _close_all_active_for_entity(db: Session, store_id: str, component: str) -> 
 
 
 def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int], dict]:
+    canonical_event_type = _canonical_event_type(event.event_type)
+
     existing = db.scalar(select(IncidentEvent).where(IncidentEvent.event_id == event.event_id))
     if existing is not None:
         return True, True, None, {}
 
     duplicate_problem = False
-    if event.event_type == "problem":
+    if canonical_event_type == "problem":
         duplicate_problem = db.scalar(
             select(IncidentEvent).where(
                 IncidentEvent.store_id == event.store_id,
@@ -125,27 +134,27 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
         ) is not None
 
     closed_count = 0
-    if event.event_type == "recovery":
+    if canonical_event_type == "ok":
         closed_count = _close_recoveries(db, event)
-    elif event.event_type == "disable":
+    elif canonical_event_type == "disable":
         closed_count = _close_all_active_for_entity(db, event.store_id, event.component)
 
     happened_at_naive = _utc_now_naive()
-    next_color = status_from_event(event.event_type, event.severity)
+    next_color = status_from_event(canonical_event_type, event.severity)
 
     incident = IncidentEvent(
         event_id=event.event_id,
         dedup_key=event.dedup_key,
         store_id=event.store_id,
         component=event.component,
-        event_type=event.event_type,
+        event_type=canonical_event_type,
         severity=event.severity,
         message=event.message,
         source=event.source,
         metadata_json=json.dumps(event.metadata),
         happened_at=happened_at_naive,
         expires_at=None,
-        active=should_mark_active(event.event_type, next_color) and not duplicate_problem,
+        active=should_mark_active(canonical_event_type, next_color) and not duplicate_problem,
     )
     db.add(incident)
 
@@ -160,12 +169,12 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
     if event.stale_interval is not None:
         status.stale_interval_seconds = parse_stale_interval_seconds(event.stale_interval)
 
-    if event.event_type == "disable":
+    if canonical_event_type == "disable":
         status.disabled_at = happened_at_naive
-    elif event.event_type == "enable":
+    elif canonical_event_type == "enable":
         status.disabled_at = None
 
-    if status.disabled_at is not None and event.event_type not in {"enable", "disable"}:
+    if status.disabled_at is not None and canonical_event_type not in {"enable", "disable"}:
         incident.active = False
         next_color = "white"
         closed_count = max(closed_count, status.active_incident_count)
@@ -179,7 +188,7 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
     else:
         status.active_incident_count = updated_count(
             status.active_incident_count,
-            event.event_type,
+            canonical_event_type,
             closed_for_entity=closed_count,
             deduplicated=duplicate_problem,
             increment_active=incident.active,
@@ -201,7 +210,7 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
             "dedup_key": event.dedup_key,
             "store_id": event.store_id,
             "component": event.component,
-            "event_type": event.event_type,
+            "event_type": canonical_event_type,
             "severity": event.severity,
             "message": event.message,
             "source": event.source,
@@ -270,7 +279,7 @@ def bootstrap(db: Session, recent_limit: int) -> BootstrapOut:
                 dedup_key=e.dedup_key,
                 store_id=e.store_id,
                 component=e.component,
-                event_type=e.event_type,
+                event_type=_canonical_event_type(e.event_type),
                 severity=e.severity,
                 message=e.message,
                 source=e.source,
@@ -308,7 +317,43 @@ def get_active_incidents_for_entity(db: Session, store_id: str, component: str) 
             dedup_key=row.dedup_key,
             store_id=row.store_id,
             component=row.component,
-            event_type=row.event_type,
+            event_type=_canonical_event_type(row.event_type),
+            severity=row.severity,
+            message=row.message,
+            source=row.source,
+            happened_at=row.happened_at,
+            active=row.active,
+        )
+        for row in rows
+    ]
+
+
+def get_recent_events_for_entity(
+    db: Session,
+    store_id: str,
+    component: str,
+    hours: int = 24,
+) -> list[IncidentEventOut]:
+    safe_hours = min(max(hours, 1), 168)
+    since = _utc_now_naive() - timedelta(hours=safe_hours)
+
+    rows = db.scalars(
+        select(IncidentEvent)
+        .where(
+            IncidentEvent.store_id == store_id,
+            IncidentEvent.component == component,
+            IncidentEvent.happened_at >= since,
+        )
+        .order_by(IncidentEvent.happened_at.desc())
+    ).all()
+
+    return [
+        IncidentEventOut(
+            event_id=row.event_id,
+            dedup_key=row.dedup_key,
+            store_id=row.store_id,
+            component=row.component,
+            event_type=_canonical_event_type(row.event_type),
             severity=row.severity,
             message=row.message,
             source=row.source,

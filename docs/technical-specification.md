@@ -66,7 +66,7 @@ SherMon is a lightweight monitoring platform for Xstore operations. It ingests i
 - `green` and `white` states are never considered active alerts.
 - Event type and severity combinations are validated at ingest:
   - `problem`: `warning` or `critical`
-  - `recovery`: `info`
+  - `ok`: `info`
   - `enable`: `info`
   - `disable`: `info`
 - Event timing uses `stale_interval` input (`d`/`h`/`m` format) and is persisted as `stale_interval_seconds` on entity status.

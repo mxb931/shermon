@@ -18,6 +18,7 @@ from .repository import (
     get_active_acks,
     get_component_statuses_for_store,
     get_active_incidents_for_entity,
+    get_recent_events_for_entity,
     get_store_statuses,
     get_summary_counts,
     ingest_event,
@@ -61,6 +62,27 @@ def _backfill_stale_interval_seconds() -> None:
                 SET stale_interval_seconds = expected_green_interval_seconds
                 WHERE stale_interval_seconds IS NULL
                   AND expected_green_interval_seconds IS NOT NULL
+                """
+            )
+        )
+
+
+def _backfill_recovery_event_type_to_ok() -> None:
+    inspector = inspect(engine)
+    if "incident_events" not in inspector.get_table_names():
+        return
+
+    existing = {c["name"] for c in inspector.get_columns("incident_events")}
+    if "event_type" not in existing:
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE incident_events
+                SET event_type = 'ok'
+                WHERE event_type = 'recovery'
                 """
             )
         )
@@ -165,6 +187,7 @@ def ensure_schema_compat() -> None:
     _ensure_column("entity_status", "last_checkin_at", "last_checkin_at DATETIME")
     _ensure_column("entity_status", "disabled_at", "disabled_at DATETIME")
     _backfill_stale_interval_seconds()
+    _backfill_recovery_event_type_to_ok()
 
 
 async def _sweeper_loop() -> None:
@@ -291,6 +314,16 @@ def get_active_alerts_for_entity(
     db: Session = Depends(get_db),
 ) -> list[IncidentEventOut]:
     return get_active_incidents_for_entity(db, store_id, component)
+
+
+@app.get("/api/v1/entity-events", response_model=list[IncidentEventOut])
+def get_recent_events_by_entity(
+    store_id: str,
+    component: str,
+    hours: int = 24,
+    db: Session = Depends(get_db),
+) -> list[IncidentEventOut]:
+    return get_recent_events_for_entity(db, store_id, component, hours)
 
 
 @app.websocket("/ws/updates")

@@ -6,7 +6,7 @@ def status_from_event(event_type: str, severity: str) -> str:
         return "white"
     if event_type == "enable":
         return "green"
-    if event_type == "recovery":
+    if event_type in {"ok", "recovery"}:
         return "green"
     if severity == "critical":
         return "red"
@@ -41,7 +41,7 @@ def updated_count(
             return current
         return current + 1
 
-    if event_type == "recovery":
+    if event_type in {"ok", "recovery"}:
         return max(0, current - closed_for_entity)
 
     return current

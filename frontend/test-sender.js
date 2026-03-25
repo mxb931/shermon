@@ -2,7 +2,7 @@ const API_BASE = window.MONITOR_API_BASE || "http://localhost:8000";
 
 const ALLOWED_SEVERITIES_BY_EVENT_TYPE = {
   problem: ["critical", "warning"],
-  recovery: ["info"],
+  ok: ["info"],
   enable: ["info"],
   disable: ["info"],
 };

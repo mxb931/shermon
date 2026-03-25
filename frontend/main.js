@@ -5,9 +5,11 @@ const state = {
   statuses: new Map(),
   incidents: [],
   acks: new Map(),
+  entityAlertsByEventId: new Map(),
   socket: null,
   reconnectAttempt: 0,
   pendingAckEventId: null,
+  pendingResolveEventIds: new Set(),
   selectedStoreId: null,
   entityAlertsContext: null,
   pingTimerId: null,
@@ -25,6 +27,7 @@ const entityBackBtn = document.getElementById("entityBackBtn");
 const entityAlertsModal = document.getElementById("entityAlertsModal");
 const entityAlertsSummary = document.getElementById("entityAlertsSummary");
 const entityAlertsList = document.getElementById("entityAlertsList");
+const entityEventsLog = document.getElementById("entityEventsLog");
 const summaryStatusModal = document.getElementById("summaryStatusModal");
 const summaryStatusTitle = document.getElementById("summaryStatusTitle");
 const summaryStatusHint = document.getElementById("summaryStatusHint");
@@ -427,6 +430,49 @@ function toUtcIso(value) {
   return local.toISOString();
 }
 
+function generateOkEventId() {
+  if (window.crypto?.randomUUID) {
+    return `evt-ui-ok-${window.crypto.randomUUID().slice(0, 8)}`;
+  }
+  const random = Math.random().toString(36).slice(2, 10);
+  return `evt-ui-ok-${Date.now()}-${random}`;
+}
+
+function padOrTrim(value, width) {
+  const text = String(value ?? "");
+  if (text.length === width) return text;
+  if (text.length < width) return text.padEnd(width, " ");
+  return `${text.slice(0, Math.max(0, width - 1))}~`;
+}
+
+function formatLogTimestamp(value) {
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return "-";
+  const iso = dt.toISOString();
+  return iso.replace("T", " ").replace("Z", " UTC");
+}
+
+function formatEventLogLine(event) {
+  const timestamp = formatLogTimestamp(event.happened_at);
+  const severity = padOrTrim(String(event.severity || "").toUpperCase(), 8);
+  const eventType = padOrTrim(String(event.event_type || "").toUpperCase(), 7);
+  const state = padOrTrim(event.active ? "ACTIVE" : "CLOSED", 6);
+  const source = padOrTrim(event.source || "-", 16);
+  const eventId = padOrTrim(event.event_id || "-", 20);
+  const message = String(event.message || "");
+  return `${timestamp} | ${severity} | ${eventType} | ${state} | ${source} | ${eventId} | ${message}`;
+}
+
+function renderEntityEventsLog(historyEvents) {
+  if (!entityEventsLog) return;
+  const header = "TIMESTAMP                | SEVERITY | TYPE    | STATE  | SOURCE           | EVENT_ID             | MESSAGE";
+  const divider = "-------------------------+----------+---------+--------+------------------+----------------------+------------------------------";
+  const lines = historyEvents.length
+    ? historyEvents.map((historyEvent) => formatEventLogLine(historyEvent))
+    : ["(no events for this component in the last 24 hours)"];
+  entityEventsLog.textContent = [header, divider, ...lines].join("\n");
+}
+
 function openAckModal(eventId) {
   const incident = state.incidents.find((item) => item.event_id === eventId);
   state.pendingAckEventId = eventId;
@@ -471,18 +517,33 @@ async function submitAckModal() {
 
 async function openEntityAlertsModal(storeId, component) {
   state.entityAlertsContext = { storeId, component };
+  state.entityAlertsByEventId.clear();
   entityAlertsSummary.textContent = `${storeId} / ${component}`;
   entityAlertsList.innerHTML = "<li class=\"incident-item\">Loading active alerts...</li>";
+  if (entityEventsLog) {
+    entityEventsLog.textContent = "Loading events...";
+  }
   if (!entityAlertsModal.open) {
     entityAlertsModal.showModal();
   }
 
   try {
     const query = new URLSearchParams({ store_id: storeId, component });
-    const response = await fetch(`${API_BASE}/api/v1/active-alerts?${query.toString()}`);
-    if (!response.ok) throw new Error("Failed to load active alerts");
+    const [alertsResponse, historyResponse] = await Promise.all([
+      fetch(`${API_BASE}/api/v1/active-alerts?${query.toString()}`),
+      fetch(`${API_BASE}/api/v1/entity-events?${query.toString()}&hours=24`),
+    ]);
+    if (!alertsResponse.ok) throw new Error("Failed to load active alerts");
+    if (!historyResponse.ok) throw new Error("Failed to load 24-hour event history");
 
-    const alerts = await response.json();
+    const alerts = await alertsResponse.json();
+    const historyEvents = await historyResponse.json();
+
+    renderEntityEventsLog(historyEvents);
+
+    for (const event of alerts) {
+      state.entityAlertsByEventId.set(event.event_id, event);
+    }
     if (!alerts.length) {
       entityAlertsList.innerHTML = "<li class=\"incident-item\">No active alerts for this entity.</li>";
       return;
@@ -499,19 +560,28 @@ async function openEntityAlertsModal(storeId, component) {
       const ackButton = state.acks.has(event.event_id)
         ? ""
         : `<button class=\"ack-btn\" data-ack-event=\"${eventId}\">Acknowledge</button>`;
+      const resolving = state.pendingResolveEventIds.has(event.event_id);
+      const resolveButton = `<button class=\"resolve-btn\" data-resolve-event=\"${eventId}\" ${resolving ? "disabled" : ""}>${resolving ? "Resolving..." : "Resolved"}</button>`;
       return `
         <li class="incident-item">
           <strong>[${severity}]</strong> ${eventType}${acked}<br />
           ${message}<br />
           <small>${happenedAt} | ${source} | ${eventId}</small><br />
-          ${ackButton}
+          <div class="incident-actions">
+            ${ackButton}
+            ${resolveButton}
+          </div>
         </li>
       `;
     });
     entityAlertsList.innerHTML = rows.join("");
+
   } catch (error) {
     console.error(error);
     entityAlertsList.innerHTML = "<li class=\"incident-item\">Unable to load active alerts.</li>";
+    if (entityEventsLog) {
+      entityEventsLog.textContent = "Unable to load 24-hour event history.";
+    }
   }
 }
 
@@ -519,6 +589,49 @@ async function refreshEntityAlertsModalIfOpen() {
   if (!entityAlertsModal.open || !state.entityAlertsContext) return;
   const { storeId, component } = state.entityAlertsContext;
   await openEntityAlertsModal(storeId, component);
+}
+
+async function submitResolveEvent(eventId) {
+  const event = state.entityAlertsByEventId.get(eventId)
+    || state.incidents.find((item) => item.event_id === eventId);
+  if (!event || state.pendingResolveEventIds.has(eventId)) return;
+
+  state.pendingResolveEventIds.add(eventId);
+
+  try {
+    const payload = {
+      event_id: generateOkEventId(),
+      dedup_key: event.dedup_key,
+      store_id: event.store_id,
+      component: event.component,
+      event_type: "ok",
+      severity: "info",
+      message: "Resolved by operator from UI",
+      source: event.source || "operator-console",
+      metadata: {
+        resolved_event_id: event.event_id,
+        resolved_by: "operator-console",
+      },
+    };
+
+    const response = await fetch(`${API_BASE}/api/v1/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Monitor-Key": "dev-monitor-key",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to resolve alert ${eventId}`);
+    }
+  } catch (error) {
+    console.error(error);
+  } finally {
+    state.pendingResolveEventIds.delete(eventId);
+    await refreshEntityAlertsModalIfOpen();
+  }
 }
 
 function wireEntityStatusActions() {
@@ -571,13 +684,26 @@ function wireAckActions() {
   const onAckClick = (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    const eventId = target.getAttribute("data-ack-event");
+    const ackButton = target.closest("[data-ack-event]");
+    if (!(ackButton instanceof HTMLElement)) return;
+    const eventId = ackButton.getAttribute("data-ack-event");
     if (!eventId) return;
     openAckModal(eventId);
   };
 
+  const onResolveClick = async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const resolveButton = target.closest("[data-resolve-event]");
+    if (!(resolveButton instanceof HTMLButtonElement)) return;
+    const eventId = resolveButton.getAttribute("data-resolve-event");
+    if (!eventId) return;
+    await submitResolveEvent(eventId);
+  };
+
   incidentList.addEventListener("click", onAckClick);
   entityAlertsList.addEventListener("click", onAckClick);
+  entityAlertsList.addEventListener("click", onResolveClick);
 
   document.getElementById("ackForm").addEventListener("submit", async (event) => {
     event.preventDefault();

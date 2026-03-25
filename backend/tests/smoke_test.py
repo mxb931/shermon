@@ -144,9 +144,9 @@ check("problem+info rejected", status == 422)
 status, _ = request(
     "POST",
     "/api/v1/events",
-    event(f"evt-inv-s2-{RUN_ID}", f"INV_SEV2_{RUN_ID}", "store-101", "network", "recovery", "warning", "Invalid combo"),
+    event(f"evt-inv-s2-{RUN_ID}", f"INV_SEV2_{RUN_ID}", "store-101", "network", "ok", "warning", "Invalid combo"),
 )
-check("recovery+warning rejected", status == 422)
+check("ok+warning rejected", status == 422)
 
 status, _ = request(
     "POST",
@@ -203,13 +203,13 @@ check("warning accepted", body.get("accepted") is True, body)
 check("not deduplicated", body.get("deduplicated") is False, body)
 
 
-print("\n--- Recovery for payments ---")
+print("\n--- OK event for payments ---")
 status, body = request(
     "POST",
     "/api/v1/events",
-    event(f"evt-T04-{RUN_ID}", f"PAY_TIMEOUT_{RUN_ID}", "store-104", "payments", "recovery", "info", "Gateway recovered"),
+    event(f"evt-T04-{RUN_ID}", f"PAY_TIMEOUT_{RUN_ID}", "store-104", "payments", "ok", "info", "Gateway recovered"),
 )
-check("recovery accepted", body.get("accepted") is True, body)
+check("ok accepted", body.get("accepted") is True, body)
 
 
 print("\n--- Green reset behavior ---")
@@ -223,31 +223,46 @@ check("critical alert accepted", body.get("accepted") is True, body)
 status, body = request(
     "POST",
     "/api/v1/events",
-    event(f"evt-T06-{RUN_ID}", f"LOY_OK_{RUN_ID}", "store-205", "loyalty", "recovery", "info", "Loyalty recovered"),
+    event(f"evt-T06-{RUN_ID}", f"LOY_OK_{RUN_ID}", "store-205", "loyalty", "ok", "info", "Loyalty recovered"),
 )
-check("recovery signal accepted", body.get("accepted") is True, body)
+check("ok signal accepted", body.get("accepted") is True, body)
 
 
 print("\n--- Bootstrap endpoint ---")
-status, body = request("GET", "/api/v1/bootstrap")
+status, bootstrap_body = request("GET", "/api/v1/bootstrap")
 check("returns 200", status == 200)
-check("has statuses list", isinstance(body.get("statuses"), list), body)
-check("has recent_events list", isinstance(body.get("recent_events"), list), body)
-check("has latest_sequence", isinstance(body.get("latest_sequence"), int), body)
+check("has statuses list", isinstance(bootstrap_body.get("statuses"), list), bootstrap_body)
+check("has recent_events list", isinstance(bootstrap_body.get("recent_events"), list), bootstrap_body)
+check("has latest_sequence", isinstance(bootstrap_body.get("latest_sequence"), int), bootstrap_body)
 
 store_104_payments = next(
-    (s for s in body.get("statuses", []) if s["store_id"] == "store-104" and s["component"] == "payments"),
+    (s for s in bootstrap_body.get("statuses", []) if s["store_id"] == "store-104" and s["component"] == "payments"),
     None,
 )
 check("payments entity present", store_104_payments is not None)
 check(
-    "payments status is green after recovery",
+    "payments status is green after ok event",
     store_104_payments and store_104_payments.get("status_color") == "green",
     store_104_payments,
 )
 
+print("\n--- Entity 24-hour event history endpoint ---")
+status, history_body = request("GET", f"/api/v1/entity-events?store_id=store-104&component=payments&hours=24")
+check("entity-events returns 200", status == 200, history_body)
+check("entity-events returns list", isinstance(history_body, list), history_body)
+check(
+    "entity-events include only requested store/component",
+    all(item.get("store_id") == "store-104" and item.get("component") == "payments" for item in history_body),
+    history_body,
+)
+check(
+    "entity-events include all event types for component timeline",
+    {"problem", "ok"}.issubset({item.get("event_type") for item in history_body}),
+    history_body,
+)
+
 store_104_inv = next(
-    (s for s in body.get("statuses", []) if s["store_id"] == "store-104" and s["component"] == "inventory"),
+    (s for s in bootstrap_body.get("statuses", []) if s["store_id"] == "store-104" and s["component"] == "inventory"),
     None,
 )
 check(
@@ -261,13 +276,13 @@ check(
         s.get("store_id") == "store-104"
         and s.get("component") == "network"
         and s.get("stale_interval_seconds") == 191400
-        for s in body.get("statuses", [])
+        for s in bootstrap_body.get("statuses", [])
     ),
-    body.get("statuses", []),
+    bootstrap_body.get("statuses", []),
 )
 
 store_205_loyalty = next(
-    (s for s in body.get("statuses", []) if s["store_id"] == "store-205" and s["component"] == "loyalty"),
+    (s for s in bootstrap_body.get("statuses", []) if s["store_id"] == "store-205" and s["component"] == "loyalty"),
     None,
 )
 check("loyalty entity present", store_205_loyalty is not None)

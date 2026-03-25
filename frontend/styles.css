@@ -429,6 +429,58 @@ section {
   font-size: 0.88rem;
 }
 
+.log-box {
+  margin-top: 0.45rem;
+  border: 1px solid #2f363d;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, #12161b 0%, #0c1014 100%);
+  max-height: 40vh;
+  overflow: auto;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.log-output {
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  color: #d7f4df;
+  font: 0.76rem/1.4 "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  white-space: pre;
+}
+
+#entityAlertsModal {
+  max-width: 1080px;
+}
+
+#entityAlertsForm {
+  gap: 0.7rem;
+}
+
+.entity-alerts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.entity-alerts-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem;
+  background: #fffdf9;
+}
+
+.entity-alerts-panel h4 {
+  margin: 0;
+}
+
+.entity-alerts-panel .meta {
+  margin: 0.3rem 0 0;
+}
+
+.entity-alerts-panel .incident-list.compact {
+  max-height: 40vh;
+}
+
 .summary-status-body {
   margin-top: 0.75rem;
   max-height: 52vh;
@@ -529,6 +581,33 @@ section {
   padding: 0.25rem 0.45rem;
   cursor: pointer;
   background: #fff;
+}
+
+.incident-actions {
+  margin-top: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.incident-actions .ack-btn {
+  margin-top: 0;
+}
+
+.resolve-btn {
+  margin-left: auto;
+  border: 1px solid #2f6f4e;
+  border-radius: 6px;
+  padding: 0.25rem 0.45rem;
+  cursor: pointer;
+  background: #f1fff6;
+  color: #1f5c3d;
+}
+
+.resolve-btn:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .badge {
@@ -729,6 +808,18 @@ dialog form {
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .entity-alerts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .entity-alerts-panel .incident-list.compact {
+    max-height: 32vh;
+  }
+
+  .log-box {
+    max-height: 30vh;
   }
 
   .form-row {

@@ -70,7 +70,7 @@ Typical response:
 }
 ```
 
-### 2) Send a recovery event
+### 2) Send a ok event
 
 Use the same `dedup_key` to close that active issue:
 
@@ -83,7 +83,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/events" \
     "dedup_key": "PAY_TIMEOUT_DEMO",
     "store_id": "store-104",
     "component": "payments",
-    "event_type": "recovery",
+    "event_type": "ok",
     "severity": "info",
     "message": "Gateway recovered",
     "source": "xstore-pos",
@@ -125,16 +125,16 @@ boolean posted = client.postEvent(problemEventJson);
 System.out.println("Problem event posted: " + posted);
 ```
 
-### 3) Send a recovery event (same dedup key)
+### 3) Send a ok event (same dedup key)
 
 ```java
-String recoveryEventJson = """
+String okEventJson = """
 {
-  "event_id": "evt-java-recovery-1002",
+  "event_id": "evt-java-ok-1002",
   "dedup_key": "PAY_TIMEOUT_JAVA_DEMO",
   "store_id": "store-104",
   "component": "payments",
-  "event_type": "recovery",
+  "event_type": "ok",
   "severity": "info",
   "message": "Gateway recovered",
   "source": "xstore-pos",
@@ -142,8 +142,8 @@ String recoveryEventJson = """
 }
 """;
 
-boolean recovered = client.postEvent(recoveryEventJson);
-System.out.println("Recovery event posted: " + recovered);
+boolean recovered = client.postEvent(okEventJson);
+System.out.println("OK event posted: " + recovered);
 ```
 
 ### 4) Full minimal runnable Java example
@@ -172,13 +172,13 @@ public class MonitorExample {
         }
         """;
 
-        String recoveryEventJson = """
+        String okEventJson = """
         {
-          "event_id": "evt-java-recovery-1002",
+          "event_id": "evt-java-ok-1002",
           "dedup_key": "PAY_TIMEOUT_JAVA_DEMO",
           "store_id": "store-104",
           "component": "payments",
-          "event_type": "recovery",
+          "event_type": "ok",
           "severity": "info",
           "message": "Gateway recovered",
           "source": "xstore-pos",
@@ -187,7 +187,7 @@ public class MonitorExample {
         """;
 
         System.out.println("Problem posted: " + client.postEvent(problemEventJson));
-        System.out.println("Recovery posted: " + client.postEvent(recoveryEventJson));
+        System.out.println("OK posted: " + client.postEvent(okEventJson));
     }
 }
 ```
@@ -224,7 +224,7 @@ All fields are required unless noted.
 | `dedup_key` | string | Yes | Groups repeated incidents, length 3-128 | None |
 | `store_id` | string | Yes | Length 1-64 | None |
 | `component` | string | Yes | Length 1-128 | None |
-| `event_type` | string | Yes | `problem`, `recovery`, `disable`, or `enable` | None |
+| `event_type` | string | Yes | `problem`, `ok`, `disable`, or `enable` | None |
 | `severity` | string | Yes | Allowed by event type (see below) | None |
 | `message` | string | Yes | Length 1-4000 | None |
 | `source` | string | Yes | Length 1-128 | None |
@@ -237,12 +237,12 @@ All fields are required unless noted.
   - `critical` sets status color to `red`
   - `warning` sets status color to `yellow`
 - `problem` does not accept `info` severity.
-- `recovery` events set status color to `green`.
+- `ok` events set status color to `green`.
 - `disable` events set status to `white` and suppress timeout evaluation.
 - `enable` events set status to `green` and resume timeout evaluation.
 - Severity matrix is enforced:
   - `problem`: `warning`, `critical`
-  - `recovery`: `info`
+  - `ok`: `info`
   - `enable`: `info`
   - `disable`: `info`
 - Invalid event_type/severity combinations return `422`.
@@ -391,6 +391,35 @@ Example response:
 
 ---
 
+## `GET /api/v1/entity-events`
+
+Returns incident events for one entity in a recent time window.
+
+No auth required.
+
+Query parameters:
+
+| Parameter | Type | Required | Notes |
+|---|---|---|---|
+| `store_id` | string | Yes | Exact store/entity identifier |
+| `component` | string | Yes | Exact component within store |
+| `hours` | integer | No | Lookback window in hours, default `24`, min `1`, max `168` |
+
+Response: array of events ordered newest first.
+
+Notes:
+
+- Includes all event types (`problem`, `ok`, `disable`, `enable`).
+- This endpoint returns events only (no acknowledgement activity).
+
+Example request:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/entity-events?store_id=store-104&component=payments&hours=24"
+```
+
+---
+
 ## `GET /api/v1/status/stores`
 
 Returns store-level hierarchy rows used by the Alerts drill-down UI.
@@ -480,7 +509,7 @@ Each message has:
     "dedup_key": "PAY_TIMEOUT_DEMO",
     "store_id": "store-104",
     "component": "payments",
-    "event_type": "recovery",
+    "event_type": "ok",
     "severity": "info",
     "message": "Gateway recovered",
     "source": "xstore-pos",
@@ -518,5 +547,5 @@ Additional websocket kinds:
 
 - Always generate a unique `event_id`.
 - Keep `dedup_key` stable for the same underlying incident type.
-- Emit a matching `recovery` when the issue clears.
+- Emit a matching `ok` when the issue clears.
 - Use UTC timestamps for consistency.

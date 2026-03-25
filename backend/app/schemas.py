@@ -2,12 +2,12 @@ from datetime import datetime
 import re
 from typing import Any, Dict, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 Severity = Literal["info", "warning", "critical"]
 StatusColor = Literal["green", "yellow", "red", "purple", "white"]
-EventType = Literal["problem", "recovery", "disable", "enable"]
+EventType = Literal["problem", "ok", "disable", "enable"]
 
 
 _STALE_INTERVAL_RE = re.compile(r"^(?:\d+[dhm])+$")
@@ -49,11 +49,18 @@ class EventIn(BaseModel):
     stale_interval: Optional[str] = Field(default=None, min_length=2, max_length=32)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("event_type", mode="before")
+    @classmethod
+    def normalize_legacy_recovery(cls, value):
+        if isinstance(value, str) and value.strip().lower() == "recovery":
+            return "ok"
+        return value
+
     @model_validator(mode="after")
     def validate_severity_for_event_type(self):
         allowed = {
             "problem": {"warning", "critical"},
-            "recovery": {"info"},
+            "ok": {"info"},
             "enable": {"info"},
             "disable": {"info"},
         }

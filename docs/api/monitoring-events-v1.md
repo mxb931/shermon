@@ -34,7 +34,7 @@ Accepts one event from Xstore.
 - `dedup_key`: groups repeated failures for deduplication.
 - `store_id`: store identifier.
 - `component`: monitored component name.
-- `event_type`: `problem`, `recovery`, `disable`, or `enable`.
+- `event_type`: `problem`, `ok`, `disable`, or `enable`.
 - `severity`: `info`, `warning`, `critical`.
 - `message`: operator-readable summary.
 - `source`: emitter name in Xstore.
@@ -49,7 +49,7 @@ Green reset behavior:
 Severity rules by event type:
 
 - `problem`: `warning` or `critical` only.
-- `recovery`: `info` only.
+- `ok`: `info` only.
 - `enable`: `info` only.
 - `disable`: `info` only.
 - Invalid event_type/severity combinations are rejected with `422`.
@@ -78,6 +78,22 @@ Returns latest sequence, current entity statuses, and recent events for dashboar
 Returns counts by color state.
 
 Color keys: `green`, `yellow`, `red`, `purple`, `white`.
+
+## GET /api/v1/entity-events
+
+Returns recent events for one entity.
+
+Query parameters:
+
+- `store_id` (required)
+- `component` (required)
+- `hours` (optional, default `24`, min `1`, max `168`)
+
+Response behavior:
+
+- Returns all event types (`problem`, `ok`, `disable`, `enable`) for the entity.
+- Ordered newest first.
+- Events only; acknowledgement activity is not included.
 
 ## Hierarchy status APIs
 
