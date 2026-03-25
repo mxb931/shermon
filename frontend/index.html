@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SherMon</title>
-    <link rel="stylesheet" href="./styles.css?v=20260323b" />
+    <link rel="stylesheet" href="./styles.css?v=20260325h" />
   </head>
   <body data-alerts-filter="true">
     <header class="topbar">
@@ -68,29 +68,6 @@
       </form>
     </dialog>
 
-    <dialog id="entityAlertsModal">
-      <form method="dialog" id="entityAlertsForm">
-        <h3>Active Alerts</h3>
-        <p id="entityAlertsSummary" class="meta"></p>
-        <div class="entity-alerts-grid">
-          <section class="entity-alerts-panel">
-            <h4>Currently Active</h4>
-            <ul id="entityAlertsList" class="incident-list compact"></ul>
-          </section>
-          <section class="entity-alerts-panel">
-            <h4>Last 24 Hours Events</h4>
-            <p class="meta">All event types for this component, newest first.</p>
-            <div class="log-box" role="region" aria-label="Last 24 hours events log">
-              <pre id="entityEventsLog" class="log-output">Loading events...</pre>
-            </div>
-          </section>
-        </div>
-        <div class="btn-row">
-          <button type="button" id="entityAlertsCloseBtn">Close</button>
-        </div>
-      </form>
-    </dialog>
-
     <dialog id="summaryStatusModal">
       <form method="dialog" id="summaryStatusForm">
         <h3 id="summaryStatusTitle">Status Details</h3>
@@ -102,7 +79,7 @@
       </form>
     </dialog>
 
-    <script src="./main.js" type="module"></script>
+    <script src="./main.js?v=20260325g" type="module"></script>
     <script src="./help-menu.js"></script>
   </body>
 </html>

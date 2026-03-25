@@ -24,14 +24,62 @@ const ackModal = document.getElementById("ackModal");
 const entityStatusTitle = document.getElementById("entityStatusTitle");
 const entityStatusHint = document.getElementById("entityStatusHint");
 const entityBackBtn = document.getElementById("entityBackBtn");
-const entityAlertsModal = document.getElementById("entityAlertsModal");
-const entityAlertsSummary = document.getElementById("entityAlertsSummary");
-const entityAlertsList = document.getElementById("entityAlertsList");
-const entityEventsLog = document.getElementById("entityEventsLog");
+let entityAlertsModal = null;
+let entityAlertsSummary = null;
+let entityAlertsList = null;
+let entityEventsLog = null;
 const summaryStatusModal = document.getElementById("summaryStatusModal");
 const summaryStatusTitle = document.getElementById("summaryStatusTitle");
 const summaryStatusHint = document.getElementById("summaryStatusHint");
 const summaryStatusBody = document.getElementById("summaryStatusBody");
+
+
+function ensureEntityAlertsModal() {
+  const existing = document.getElementById("entityAlertsModal");
+  if (!existing) {
+    document.body.insertAdjacentHTML("beforeend", `
+      <dialog id="entityAlertsModal">
+        <form method="dialog" id="entityAlertsForm">
+          <h3>Active Alerts</h3>
+          <p id="entityAlertsSummary" class="meta"></p>
+          <div class="entity-alerts-grid">
+            <section class="entity-alerts-panel currently-active-panel">
+              <h4>Currently Active</h4>
+              <ul id="entityAlertsList" class="incident-list compact active-alerts-static-list"></ul>
+            </section>
+            <section class="entity-alerts-panel events-log-panel">
+              <h4>Last 24 Hours Events</h4>
+              <p class="meta">All event types for this component, newest first.</p>
+              <div class="log-box" role="region" aria-label="Last 24 hours events log">
+                <pre id="entityEventsLog" class="log-output">Loading events...</pre>
+              </div>
+            </section>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="entityAlertsCloseBtn">Close</button>
+          </div>
+        </form>
+      </dialog>
+    `);
+  }
+
+  entityAlertsModal = document.getElementById("entityAlertsModal");
+  entityAlertsSummary = document.getElementById("entityAlertsSummary");
+  entityAlertsList = document.getElementById("entityAlertsList");
+  entityEventsLog = document.getElementById("entityEventsLog");
+}
+
+function truncateText(value, maxLength) {
+  const text = String(value || "");
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function truncateMiddle(value, headLength, tailLength) {
+  const text = String(value || "");
+  if (text.length <= headLength + tailLength + 1) return text;
+  return `${text.slice(0, headLength)}…${text.slice(-tailLength)}`;
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -459,7 +507,7 @@ function formatEventLogLine(event) {
   const state = padOrTrim(event.active ? "ACTIVE" : "CLOSED", 6);
   const source = padOrTrim(event.source || "-", 16);
   const eventId = padOrTrim(event.event_id || "-", 20);
-  const message = String(event.message || "");
+  const message = String(event.message || "").replace(/\s+/g, " ").trim();
   return `${timestamp} | ${severity} | ${eventType} | ${state} | ${source} | ${eventId} | ${message}`;
 }
 
@@ -516,6 +564,7 @@ async function submitAckModal() {
 }
 
 async function openEntityAlertsModal(storeId, component) {
+  if (!entityAlertsModal || !entityAlertsSummary || !entityAlertsList) return;
   state.entityAlertsContext = { storeId, component };
   state.entityAlertsByEventId.clear();
   entityAlertsSummary.textContent = `${storeId} / ${component}`;
@@ -527,58 +576,69 @@ async function openEntityAlertsModal(storeId, component) {
     entityAlertsModal.showModal();
   }
 
-  try {
-    const query = new URLSearchParams({ store_id: storeId, component });
-    const [alertsResponse, historyResponse] = await Promise.all([
-      fetch(`${API_BASE}/api/v1/active-alerts?${query.toString()}`),
-      fetch(`${API_BASE}/api/v1/entity-events?${query.toString()}&hours=24`),
-    ]);
-    if (!alertsResponse.ok) throw new Error("Failed to load active alerts");
-    if (!historyResponse.ok) throw new Error("Failed to load 24-hour event history");
+  const query = new URLSearchParams({ store_id: storeId, component });
+  const [alertsResult, historyResult] = await Promise.allSettled([
+    fetch(`${API_BASE}/api/v1/active-alerts?${query.toString()}`),
+    fetch(`${API_BASE}/api/v1/entity-events?${query.toString()}&hours=24`),
+  ]);
 
-    const alerts = await alertsResponse.json();
-    const historyEvents = await historyResponse.json();
+  if (alertsResult.status === "fulfilled") {
+    const response = alertsResult.value;
+    if (response.ok) {
+      const alerts = await response.json();
+      for (const event of alerts) {
+        state.entityAlertsByEventId.set(event.event_id, event);
+      }
+      if (!alerts.length) {
+        entityAlertsList.innerHTML = "<li class=\"incident-item\">No active alerts for this entity.</li>";
+      } else {
+        const rows = alerts.map((event) => {
+          const severity = escapeHtml(event.severity);
+          const eventType = escapeHtml(event.event_type);
+          const message = escapeHtml(truncateText(event.message, 90));
+          const happenedAt = escapeHtml(new Date(event.happened_at).toLocaleString());
+          const source = escapeHtml(truncateText(event.source, 20));
+          const eventId = escapeHtml(event.event_id);
+          const eventIdCompact = escapeHtml(truncateMiddle(event.event_id, 10, 8));
+          const acked = state.acks.has(event.event_id) ? " | acknowledged" : "";
+          const ackButton = state.acks.has(event.event_id)
+            ? ""
+            : `<button class=\"ack-btn\" data-ack-event=\"${eventId}\">Acknowledge</button>`;
+          const resolving = state.pendingResolveEventIds.has(event.event_id);
+          const resolveButton = `<button class=\"resolve-btn\" data-resolve-event=\"${eventId}\" ${resolving ? "disabled" : ""}>${resolving ? "Resolving..." : "Resolved"}</button>`;
+          return `
+            <li class="incident-item">
+              <strong>[${severity}]</strong> ${eventType}${acked}<br />
+              ${message}<br />
+              <small>${happenedAt} | ${source} | ${eventIdCompact}</small><br />
+              <div class="incident-actions">
+                ${ackButton}
+                ${resolveButton}
+              </div>
+            </li>
+          `;
+        });
 
-    renderEntityEventsLog(historyEvents);
-
-    for (const event of alerts) {
-      state.entityAlertsByEventId.set(event.event_id, event);
+        entityAlertsList.innerHTML = rows.join("");
+      }
+    } else {
+      entityAlertsList.innerHTML = `<li class=\"incident-item\">Unable to load active alerts (HTTP ${response.status}).</li>`;
     }
-    if (!alerts.length) {
-      entityAlertsList.innerHTML = "<li class=\"incident-item\">No active alerts for this entity.</li>";
-      return;
-    }
-
-    const rows = alerts.map((event) => {
-      const severity = escapeHtml(event.severity);
-      const eventType = escapeHtml(event.event_type);
-      const message = escapeHtml(event.message);
-      const happenedAt = escapeHtml(new Date(event.happened_at).toLocaleString());
-      const source = escapeHtml(event.source);
-      const eventId = escapeHtml(event.event_id);
-      const acked = state.acks.has(event.event_id) ? " | acknowledged" : "";
-      const ackButton = state.acks.has(event.event_id)
-        ? ""
-        : `<button class=\"ack-btn\" data-ack-event=\"${eventId}\">Acknowledge</button>`;
-      const resolving = state.pendingResolveEventIds.has(event.event_id);
-      const resolveButton = `<button class=\"resolve-btn\" data-resolve-event=\"${eventId}\" ${resolving ? "disabled" : ""}>${resolving ? "Resolving..." : "Resolved"}</button>`;
-      return `
-        <li class="incident-item">
-          <strong>[${severity}]</strong> ${eventType}${acked}<br />
-          ${message}<br />
-          <small>${happenedAt} | ${source} | ${eventId}</small><br />
-          <div class="incident-actions">
-            ${ackButton}
-            ${resolveButton}
-          </div>
-        </li>
-      `;
-    });
-    entityAlertsList.innerHTML = rows.join("");
-
-  } catch (error) {
-    console.error(error);
+  } else {
+    console.error(alertsResult.reason);
     entityAlertsList.innerHTML = "<li class=\"incident-item\">Unable to load active alerts.</li>";
+  }
+
+  if (historyResult.status === "fulfilled") {
+    const response = historyResult.value;
+    if (response.ok) {
+      const historyEvents = await response.json();
+      renderEntityEventsLog(historyEvents);
+    } else if (entityEventsLog) {
+      entityEventsLog.textContent = `Unable to load 24-hour event history (HTTP ${response.status}).`;
+    }
+  } else {
+    console.error(historyResult.reason);
     if (entityEventsLog) {
       entityEventsLog.textContent = "Unable to load 24-hour event history.";
     }
@@ -586,7 +646,7 @@ async function openEntityAlertsModal(storeId, component) {
 }
 
 async function refreshEntityAlertsModalIfOpen() {
-  if (!entityAlertsModal.open || !state.entityAlertsContext) return;
+  if (!entityAlertsModal || !entityAlertsModal.open || !state.entityAlertsContext) return;
   const { storeId, component } = state.entityAlertsContext;
   await openEntityAlertsModal(storeId, component);
 }
@@ -635,6 +695,7 @@ async function submitResolveEvent(eventId) {
 }
 
 function wireEntityStatusActions() {
+  if (!entityAlertsModal) return;
   const openFromTile = (tile) => {
     const storeId = tile.getAttribute("data-store-id");
     const component = tile.getAttribute("data-component");
@@ -665,10 +726,13 @@ function wireEntityStatusActions() {
     openFromTile(tile);
   });
 
-  document.getElementById("entityAlertsCloseBtn").addEventListener("click", () => {
-    state.entityAlertsContext = null;
-    entityAlertsModal.close();
-  });
+  const closeButton = document.getElementById("entityAlertsCloseBtn");
+  if (closeButton) {
+    closeButton.addEventListener("click", () => {
+      state.entityAlertsContext = null;
+      entityAlertsModal.close();
+    });
+  }
 
   entityAlertsModal.addEventListener("close", () => {
     state.entityAlertsContext = null;
@@ -681,6 +745,7 @@ function wireEntityStatusActions() {
 }
 
 function wireAckActions() {
+  if (!entityAlertsList) return;
   const onAckClick = (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
@@ -745,6 +810,7 @@ function wireSummaryActions() {
 }
 
 async function start() {
+  ensureEntityAlertsModal();
   try {
     await loadBootstrap();
   } catch (error) {
