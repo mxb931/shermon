@@ -132,6 +132,21 @@ function statusRank(statusColor) {
   return ranks[statusColor] || 0;
 }
 
+function compareStoreIdsByNumericSuffix(a, b) {
+  const aText = String(a || "");
+  const bText = String(b || "");
+  const aMatch = aText.match(/(\d+)(?!.*\d)/);
+  const bMatch = bText.match(/(\d+)(?!.*\d)/);
+
+  if (aMatch && bMatch) {
+    const aNum = Number(aMatch[1]);
+    const bNum = Number(bMatch[1]);
+    if (aNum !== bNum) return aNum - bNum;
+  }
+
+  return aText.localeCompare(bText, undefined, { numeric: true, sensitivity: "base" });
+}
+
 function compareIncidentsByNewest(a, b) {
   const timeDiff = Date.parse(b.happened_at) - Date.parse(a.happened_at);
   if (!Number.isNaN(timeDiff) && timeDiff !== 0) return timeDiff;
@@ -293,6 +308,8 @@ function renderStoreGrid() {
     stores = stores.filter(
       (s) => s.status_color !== "green" && s.status_color !== "white"
     );
+  } else {
+    stores.sort((a, b) => compareStoreIdsByNumericSuffix(a.store_id, b.store_id));
   }
 
   if (!stores.length) {
