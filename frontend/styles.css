@@ -201,29 +201,54 @@ h2 {
   outline-offset: 2px;
 }
 
-.chip.green,
 .status.green {
   color: var(--green);
 }
 
-.chip.yellow,
 .status.yellow {
   color: var(--yellow);
 }
 
-.chip.red,
 .status.red {
   color: var(--red);
 }
 
-.chip.purple,
 .status.purple {
   color: var(--purple);
 }
 
-.chip.white,
 .status.white {
   color: var(--white);
+}
+
+.chip.green {
+  background: #dcefdc;
+  border-color: #b7d4b8;
+  color: #1f1e1a;
+}
+
+.chip.yellow {
+  background: #f8edcb;
+  border-color: #dbc892;
+  color: #1f1e1a;
+}
+
+.chip.red {
+  background: #f5d7d7;
+  border-color: #d7abab;
+  color: #1f1e1a;
+}
+
+.chip.purple {
+  background: #ece1f7;
+  border-color: #c8b5e0;
+  color: #1f1e1a;
+}
+
+.chip.white {
+  background: #efefef;
+  border-color: #cfcfcf;
+  color: #1f1e1a;
 }
 
 .layout {
@@ -813,6 +838,15 @@ section {
   border-radius: 8px;
   padding: 0.7rem;
   overflow-x: auto;
+}
+
+#senderResultModal {
+  max-width: 780px;
+}
+
+#senderResultOutput {
+  max-height: 56vh;
+  overflow: auto;
 }
 
 .markdown-body {

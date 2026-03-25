@@ -52,12 +52,12 @@
         <div id="eventModeForm">
           <div class="form-row"><label for="eventType">Event Type</label><select id="eventType"><option>problem</option><option>ok</option><option>disable</option><option>enable</option></select></div>
           <div class="form-row"><label for="severity">Severity</label><select id="severity"><option>critical</option><option>warning</option><option>info</option></select></div>
-          <div class="form-row"><label for="storeId">Store</label><select id="storeId"><option>store-101</option><option selected>store-104</option><option>store-220</option></select></div>
-          <div class="form-row"><label for="component">Component</label><select id="component"><option selected>payments</option><option>inventory</option><option>network</option></select></div>
+          <div class="form-row"><label for="storeId">Store</label><select id="storeId"><option value="">Loading stores...</option></select></div>
+          <div class="form-row"><label for="component">Component</label><select id="component"><option value="">Loading components...</option></select></div>
           <div class="form-row"><label for="source">Source</label><select id="source"><option selected>test-sender</option><option>xstore-pos</option><option>watchdog</option></select></div>
           <div class="form-row"><label for="staleInterval">Stale Interval (d/h/m)</label><input id="staleInterval" type="text" placeholder="2d5h10m" /></div>
           <div class="form-row"><label for="metadataInput">Metadata (key=value per line)</label><textarea id="metadataInput" rows="4" placeholder="terminal_id=lane-3&#10;host=store-router-1"></textarea></div>
-          <div class="form-row"><label for="eventMessage">Message</label><textarea id="eventMessage" rows="3">Test message from sender</textarea></div>
+          <div class="form-row"><label for="eventMessage">Message</label><textarea id="eventMessage" rows="3" placeholder="Example: Gateway timeout after retries"></textarea></div>
         </div>
 
         <div id="ackModeForm" class="hidden">
@@ -70,17 +70,21 @@
         <div class="btn-row">
           <button id="sendTestMessageBtn" type="button">Send</button>
         </div>
-
-        <h3>Payload Preview</h3>
-        <pre id="payloadPreview" class="code-box"></pre>
-
-        <h3>API Response</h3>
-        <pre id="senderResponse" class="code-box"></pre>
       </section>
     </main>
 
+    <dialog id="senderResultModal">
+      <form method="dialog" id="senderResultForm">
+        <h3>Send Result</h3>
+        <pre id="senderResultOutput" class="code-box"></pre>
+        <div class="btn-row">
+          <button id="senderResultOkBtn" type="button">OK</button>
+        </div>
+      </form>
+    </dialog>
+
     <script src="./page-status.js" type="module"></script>
-    <script src="./test-sender.js?v=20260323e" type="module"></script>
+    <script src="./test-sender.js?v=20260325h" type="module"></script>
     <script src="./help-menu.js"></script>
   </body>
 </html>
