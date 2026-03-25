@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SherMon - Admin Config</title>
+    <link rel="stylesheet" href="./styles.css?v=20260325j" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>SherMon</h1>
+      <div id="connectionBadge" class="badge stale">disconnected</div>
+    </header>
+
+    <nav class="tabbar" aria-label="Main navigation">
+      <a class="tab" href="./index.html">Alerts</a>
+      <a class="tab" href="./all-stores.html">All Stores</a>
+      <a class="tab" href="./acknowledgements.html">Acknowledgements</a>
+      <div class="menu-group">
+        <button class="tab tab-button admin-toggle active" type="button" aria-expanded="false" aria-controls="adminSubmenu">Admin</button>
+        <div class="submenu" role="menu" aria-label="Admin links">
+          <a class="submenu-item" href="./test-sender.html">Test Sender</a>
+          <a class="submenu-item" href="./admin-config.html">Config</a>
+          <a class="submenu-item" href="./logs.html">Logs</a>
+        </div>
+      </div>
+      <div class="menu-group">
+        <button class="tab tab-button help-toggle" type="button" aria-expanded="false" aria-controls="helpSubmenu">Help</button>
+        <div class="submenu" role="menu" aria-label="Documentation links">
+          <a class="submenu-item" href="./help.html">Help Overview</a>
+          <a class="submenu-item" href="./technical-functionality.html">Technical Functionality</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=technical-specification">Technical Specification</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-developer-usage">API Developer Usage</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-monitoring-events-v1">Monitoring Events API v1</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=readme">Project README</a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="layout single">
+      <section>
+        <h2>Admin Config</h2>
+        <p class="meta">Configure runtime values for sweeper cadence, history behavior, and backend log rotation retention.</p>
+
+        <form id="adminConfigForm" class="sender-form">
+          <div class="form-row">
+            <label for="adminApiKey">Admin API Key</label>
+            <input id="adminApiKey" type="password" value="dev-monitor-key" autocomplete="off" />
+          </div>
+
+          <div class="form-row">
+            <label for="sweeperIntervalSeconds">Sweeper Interval (seconds)</label>
+            <input id="sweeperIntervalSeconds" type="number" min="15" max="3600" required />
+          </div>
+
+          <div class="form-row">
+            <label for="entityHistoryDefaultLimit">Entity History Default Rows</label>
+            <input id="entityHistoryDefaultLimit" type="number" min="50" max="5000" required />
+          </div>
+
+          <div class="form-row">
+            <label for="entityHistoryLimitOptions">Entity History Row Options (comma-separated)</label>
+            <input id="entityHistoryLimitOptions" type="text" placeholder="250,500,1000,2000" required />
+          </div>
+
+          <div class="form-row">
+            <label for="logMaxMb">Max Log File Size (MB)</label>
+            <input id="logMaxMb" type="number" min="1" max="1024" required />
+          </div>
+
+          <div class="form-row">
+            <label for="logBackupCount">Retained Log Files</label>
+            <input id="logBackupCount" type="number" min="1" max="200" required />
+          </div>
+
+          <div class="btn-row">
+            <button id="adminConfigSaveBtn" type="submit">Save Config</button>
+            <button id="adminConfigReloadBtn" type="button">Reload</button>
+            <button id="adminConfigResetBtn" type="button">Reset To Defaults</button>
+          </div>
+        </form>
+
+        <pre id="adminConfigResult" class="log-output">Loading config...</pre>
+      </section>
+    </main>
+
+    <script src="./page-status.js" type="module"></script>
+    <script src="./help-menu.js?v=20260325a"></script>
+    <script src="./admin-config.js" type="module"></script>
+  </body>
+</html>

@@ -148,3 +148,70 @@ class BootstrapOut(BaseModel):
     statuses: list[EntityStatusOut]
     recent_events: list[IncidentEventOut]
     active_acks: list[AckOut]
+    config: Optional["RuntimeConfigOut"] = None
+
+
+class RuntimeConfigOut(BaseModel):
+    sweeper_interval_seconds: int = Field(ge=15, le=3600)
+    entity_history_default_limit: int = Field(ge=50, le=5000)
+    entity_history_limit_options: list[int] = Field(min_length=1)
+    log_max_mb: int = Field(ge=1, le=1024)
+    log_backup_count: int = Field(ge=1, le=200)
+
+    @model_validator(mode="after")
+    def validate_defaults(self):
+        options = sorted(set(self.entity_history_limit_options))
+        if options != self.entity_history_limit_options:
+            self.entity_history_limit_options = options
+        if self.entity_history_default_limit not in self.entity_history_limit_options:
+            raise ValueError("entity_history_default_limit must be present in entity_history_limit_options")
+        if any(value < 50 or value > 5000 for value in self.entity_history_limit_options):
+            raise ValueError("entity_history_limit_options values must be between 50 and 5000")
+        return self
+
+
+class RuntimeConfigUpdateIn(BaseModel):
+    sweeper_interval_seconds: int = Field(ge=15, le=3600)
+    entity_history_default_limit: int = Field(ge=50, le=5000)
+    entity_history_limit_options: list[int] = Field(min_length=1)
+    log_max_mb: int = Field(ge=1, le=1024)
+    log_backup_count: int = Field(ge=1, le=200)
+
+    @model_validator(mode="after")
+    def validate_defaults(self):
+        options = sorted(set(self.entity_history_limit_options))
+        self.entity_history_limit_options = options
+        if self.entity_history_default_limit not in self.entity_history_limit_options:
+            raise ValueError("entity_history_default_limit must be present in entity_history_limit_options")
+        if any(value < 50 or value > 5000 for value in self.entity_history_limit_options):
+            raise ValueError("entity_history_limit_options values must be between 50 and 5000")
+        return self
+
+
+BootstrapOut.model_rebuild()
+
+
+class LogFileOut(BaseModel):
+    name: str
+    size_bytes: int
+    modified_at: datetime
+    active: bool
+
+
+class LogEntryOut(BaseModel):
+    timestamp: Optional[datetime] = None
+    severity: Optional[str] = None
+    message_type: Optional[str] = None
+    source: Optional[str] = None
+    state: Optional[str] = None
+    event_id: Optional[str] = None
+    client_ip: Optional[str] = None
+    message: Optional[str] = None
+    raw: str
+
+
+class LogQueryOut(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: list[LogEntryOut]

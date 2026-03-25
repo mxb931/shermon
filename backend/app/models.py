@@ -74,3 +74,14 @@ class Acknowledgement(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     acknowledged_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class RuntimeConfig(Base):
+    __tablename__ = "runtime_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sweeper_interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    entity_history_default_limit: Mapped[int] = mapped_column(Integer, default=1000)
+    entity_history_limit_options_json: Mapped[str] = mapped_column(Text, default="[250,500,1000,2000]")
+    log_max_mb: Mapped[int] = mapped_column(Integer, default=50)
+    log_backup_count: Mapped[int] = mapped_column(Integer, default=20)

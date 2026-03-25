@@ -23,7 +23,9 @@ RUN_ID = str(int(time.time()))
 def request(method, path, payload=None, key=KEY):
     url = BASE + path
     data = json.dumps(payload).encode() if payload else None
-    headers = {"Content-Type": "application/json", "X-Monitor-Key": key}
+    headers = {"Content-Type": "application/json"}
+    if key is not None:
+        headers["X-Monitor-Key"] = key
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req) as resp:
@@ -78,6 +80,54 @@ status, _ = request(
     key="wrong-key",
 )
 check("bad API key returns 401", status == 401)
+
+
+print("\n--- Runtime config API ---")
+status, body = request("GET", "/api/v1/config")
+check("config get returns 200", status == 200, body)
+check("config has sweeper interval", isinstance(body.get("sweeper_interval_seconds"), int), body)
+check("config has history default", isinstance(body.get("entity_history_default_limit"), int), body)
+check("config has history options", isinstance(body.get("entity_history_limit_options"), list), body)
+check("config has log max mb", isinstance(body.get("log_max_mb"), int), body)
+check("config has log backup count", isinstance(body.get("log_backup_count"), int), body)
+
+invalid_config = {
+    "sweeper_interval_seconds": 30,
+    "entity_history_default_limit": 750,
+    "entity_history_limit_options": [250, 500, 1000],
+    "log_max_mb": 50,
+    "log_backup_count": 20,
+}
+status, _ = request("PUT", "/api/v1/config", invalid_config)
+check("config put rejects default not in options", status == 422)
+
+valid_config = {
+    "sweeper_interval_seconds": 30,
+    "entity_history_default_limit": 500,
+    "entity_history_limit_options": [250, 500, 1000],
+    "log_max_mb": 50,
+    "log_backup_count": 20,
+}
+status, body = request("PUT", "/api/v1/config", valid_config)
+check("config put returns 200", status == 200, body)
+check("config put persists sweeper interval", body.get("sweeper_interval_seconds") == 30, body)
+check("config put persists default history limit", body.get("entity_history_default_limit") == 500, body)
+check("config put persists history options", body.get("entity_history_limit_options") == [250, 500, 1000], body)
+check("config put persists log max mb", body.get("log_max_mb") == 50, body)
+check("config put persists log backup count", body.get("log_backup_count") == 20, body)
+
+status, body = request("GET", "/api/v1/config")
+check("config get reflects updated values", status == 200 and body.get("entity_history_default_limit") == 500, body)
+
+status, bootstrap_body = request("GET", "/api/v1/bootstrap")
+check("bootstrap includes config payload", isinstance(bootstrap_body.get("config"), dict), bootstrap_body.get("config"))
+check(
+    "bootstrap config history options reflect update",
+    bootstrap_body.get("config", {}).get("entity_history_limit_options") == [250, 500, 1000],
+    bootstrap_body.get("config"),
+)
+check("bootstrap config includes log max mb", bootstrap_body.get("config", {}).get("log_max_mb") == 50, bootstrap_body.get("config"))
+check("bootstrap config includes log backup count", bootstrap_body.get("config", {}).get("log_backup_count") == 20, bootstrap_body.get("config"))
 
 
 print("\n--- Stale interval validation ---")
@@ -481,6 +531,28 @@ status, body = request("POST", "/api/v1/events", {
     "metadata": {},
 })
 check("metadata recovery accepted", status == 200 and body.get("accepted") is True, body)
+
+
+print("\n--- Logs endpoints ---")
+status, body = request("GET", "/api/v1/log-files", key=None)
+check("log-files returns 200 without auth", status == 200, body)
+check("log-files returns list", isinstance(body, list), body)
+
+status, body = request("GET", "/api/v1/logs?limit=100&offset=0", key=None)
+check("logs returns 200 without auth", status == 200, body)
+check("logs response has items list", isinstance(body.get("items"), list), body)
+
+status, body = request("GET", "/api/v1/logs?client_ip=127.0.0.1&limit=100&offset=0", key=None)
+check("logs IP filter returns 200", status == 200, body)
+check("logs IP filter contains only matching rows", all("127.0.0.1" in (item.get("client_ip") or "") for item in body.get("items", [])), body)
+
+status, body = request("GET", f"/api/v1/logs?event_id=evt-T01-{RUN_ID}&limit=100&offset=0", key=None)
+check("logs event_id filter returns 200", status == 200, body)
+check(
+    "logs event_id filter returns matching rows",
+    all(f"evt-T01-{RUN_ID}" in (item.get("event_id") or "") for item in body.get("items", [])),
+    body,
+)
 
 
 passed = sum(results)

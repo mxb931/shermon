@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import Acknowledgement, BroadcastEvent, EntityStatus, IncidentEvent, StreamCursor
+from .models import Acknowledgement, BroadcastEvent, EntityStatus, IncidentEvent, RuntimeConfig, StreamCursor
 from .schemas import (
     AckIn,
     AckOut,
@@ -17,9 +20,15 @@ from .schemas import (
     EntityStatusOut,
     EventIn,
     IncidentEventOut,
+    RuntimeConfigOut,
+    RuntimeConfigUpdateIn,
     StoreStatusOut,
     parse_stale_interval_seconds,
 )
+
+
+logger = logging.getLogger(__name__)
+_LOG_FIELD_RE = re.compile(r"(?P<key>[a-z_]+)=(?P<value>[^\s]+)")
 from .status_projection import should_change_state, should_mark_active, status_from_event, updated_count
 
 
@@ -52,6 +61,126 @@ def _canonical_event_type(event_type: str) -> str:
     return event_type
 
 
+def _log_files(log_dir: str, active_file_name: str) -> list[Path]:
+    root = Path(log_dir)
+    if not root.exists() or not root.is_dir():
+        return []
+    files = [path for path in root.iterdir() if path.is_file() and path.name.startswith(active_file_name)]
+    files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return files
+
+
+def list_log_files(log_dir: str, active_file_name: str) -> list[dict]:
+    active_path = Path(log_dir) / active_file_name
+    output: list[dict] = []
+    for path in _log_files(log_dir, active_file_name):
+        stat = path.stat()
+        output.append(
+            {
+                "name": path.name,
+                "size_bytes": stat.st_size,
+                "modified_at": datetime.fromtimestamp(stat.st_mtime),
+                "active": path.resolve() == active_path.resolve() if active_path.exists() else path.name == active_file_name,
+            }
+        )
+    return output
+
+
+def _parse_log_line(line: str) -> dict:
+    raw = line.rstrip("\n")
+    fields = {match.group("key"): match.group("value") for match in _LOG_FIELD_RE.finditer(raw)}
+    timestamp = None
+    if len(raw) >= 23:
+        maybe_ts = raw[:23]
+        try:
+            timestamp = datetime.strptime(maybe_ts, "%Y-%m-%d %H:%M:%S,%f")
+        except ValueError:
+            timestamp = None
+
+    message = None
+    marker = " msg="
+    idx = raw.find(marker)
+    if idx >= 0:
+        message = raw[idx + len(marker) :]
+
+    return {
+        "timestamp": timestamp,
+        "severity": (fields.get("level") or "").lower() or None,
+        "message_type": fields.get("message_type"),
+        "source": fields.get("source"),
+        "state": fields.get("state"),
+        "event_id": fields.get("event_id"),
+        "client_ip": fields.get("client_ip"),
+        "message": message,
+        "raw": raw,
+    }
+
+
+def query_logs(
+    log_dir: str,
+    active_file_name: str,
+    file_name: Optional[str],
+    since: Optional[datetime],
+    until: Optional[datetime],
+    severity: Optional[str],
+    message_type: Optional[str],
+    source: Optional[str],
+    state: Optional[str],
+    event_id: Optional[str],
+    client_ip: Optional[str],
+    q: Optional[str],
+    limit: int,
+    offset: int,
+) -> dict:
+    selected_name = file_name or active_file_name
+    root = Path(log_dir).resolve()
+    selected_path = (root / selected_name).resolve()
+    if root not in selected_path.parents and selected_path != root:
+        return {"total": 0, "limit": limit, "offset": offset, "items": []}
+    if not selected_path.exists() or not selected_path.is_file():
+        return {"total": 0, "limit": limit, "offset": offset, "items": []}
+
+    entries: list[dict] = []
+    with selected_path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            parsed = _parse_log_line(line)
+
+            if since and parsed["timestamp"] is None:
+                continue
+            if until and parsed["timestamp"] is None:
+                continue
+            if since and parsed["timestamp"] and parsed["timestamp"] < since:
+                continue
+            if until and parsed["timestamp"] and parsed["timestamp"] > until:
+                continue
+            if severity and (parsed["severity"] or "") != severity.lower():
+                continue
+            if message_type and (parsed["message_type"] or "") != message_type:
+                continue
+            if source and source.lower() not in (parsed["source"] or "").lower():
+                continue
+            if state and state.lower() not in (parsed["state"] or "").lower():
+                continue
+            if event_id and event_id.lower() not in (parsed["event_id"] or "").lower():
+                continue
+            if client_ip and client_ip.lower() not in (parsed["client_ip"] or "").lower():
+                continue
+            if q and q.lower() not in parsed["raw"].lower():
+                continue
+
+            entries.append(parsed)
+
+    entries.reverse()
+    total = len(entries)
+    sliced = entries[offset : offset + limit]
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": sliced,
+    }
+
+
 def _cursor(db: Session) -> StreamCursor:
     cursor = db.scalar(select(StreamCursor).where(StreamCursor.id == 1))
     if cursor is None:
@@ -59,6 +188,78 @@ def _cursor(db: Session) -> StreamCursor:
         db.add(cursor)
         db.flush()
     return cursor
+
+
+def _runtime_config(db: Session) -> RuntimeConfig:
+    row = db.scalar(select(RuntimeConfig).where(RuntimeConfig.id == 1))
+    if row is None:
+        row = RuntimeConfig(
+            id=1,
+            sweeper_interval_seconds=60,
+            entity_history_default_limit=1000,
+            entity_history_limit_options_json="[250,500,1000,2000]",
+            log_max_mb=50,
+            log_backup_count=20,
+        )
+        db.add(row)
+        db.flush()
+    return row
+
+
+def get_runtime_config(db: Session) -> RuntimeConfigOut:
+    row = _runtime_config(db)
+    try:
+        options = json.loads(row.entity_history_limit_options_json or "[]")
+    except Exception:
+        options = [250, 500, 1000, 2000]
+
+    try:
+        return RuntimeConfigOut(
+            sweeper_interval_seconds=row.sweeper_interval_seconds,
+            entity_history_default_limit=row.entity_history_default_limit,
+            entity_history_limit_options=options,
+            log_max_mb=row.log_max_mb,
+            log_backup_count=row.log_backup_count,
+        )
+    except Exception:
+        row.sweeper_interval_seconds = 60
+        row.entity_history_default_limit = 1000
+        row.entity_history_limit_options_json = "[250,500,1000,2000]"
+        row.log_max_mb = 50
+        row.log_backup_count = 20
+        db.commit()
+        return RuntimeConfigOut(
+            sweeper_interval_seconds=60,
+            entity_history_default_limit=1000,
+            entity_history_limit_options=[250, 500, 1000, 2000],
+            log_max_mb=50,
+            log_backup_count=20,
+        )
+
+
+def update_runtime_config(db: Session, payload: RuntimeConfigUpdateIn) -> RuntimeConfigOut:
+    row = _runtime_config(db)
+    row.sweeper_interval_seconds = payload.sweeper_interval_seconds
+    row.entity_history_default_limit = payload.entity_history_default_limit
+    row.entity_history_limit_options_json = json.dumps(payload.entity_history_limit_options)
+    row.log_max_mb = payload.log_max_mb
+    row.log_backup_count = payload.log_backup_count
+    db.commit()
+    logger.info(
+        "Runtime config updated",
+        extra={
+            "message_type": "runtime_config_update",
+            "source": "config",
+            "state": "applied",
+        },
+    )
+    return RuntimeConfigOut(
+        sweeper_interval_seconds=row.sweeper_interval_seconds,
+        entity_history_default_limit=row.entity_history_default_limit,
+        entity_history_limit_options=payload.entity_history_limit_options,
+        log_max_mb=row.log_max_mb,
+        log_backup_count=row.log_backup_count,
+    )
 
 
 def _entity_status(db: Session, store_id: str, component: str) -> EntityStatus:
@@ -117,9 +318,26 @@ def _close_all_active_for_entity(db: Session, store_id: str, component: str) -> 
 
 def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int], dict]:
     canonical_event_type = _canonical_event_type(event.event_type)
+    logger.info(
+        "Ingest event received",
+        extra={
+            "message_type": "ingest_event",
+            "source": event.source,
+            "event_id": event.event_id,
+        },
+    )
 
     existing = db.scalar(select(IncidentEvent).where(IncidentEvent.event_id == event.event_id))
     if existing is not None:
+        logger.warning(
+            "Event replay detected",
+            extra={
+                "message_type": "ingest_event",
+                "source": event.source,
+                "event_id": event.event_id,
+                "state": "idempotent_replay",
+            },
+        )
         return True, True, None, {}
 
     duplicate_problem = False
@@ -248,6 +466,15 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
     )
 
     db.commit()
+    logger.info(
+        "Event ingested",
+        extra={
+            "message_type": canonical_event_type,
+            "source": event.source,
+            "state": status.status_color,
+            "event_id": event.event_id,
+        },
+    )
     return True, duplicate_problem, cursor.latest_sequence, payload
 
 
@@ -263,6 +490,7 @@ def bootstrap(db: Session, recent_limit: int) -> BootstrapOut:
     ).all()
 
     active_acks = get_active_acks(db)
+    runtime_config = get_runtime_config(db)
 
     return BootstrapOut(
         latest_sequence=cursor.latest_sequence,
@@ -297,6 +525,7 @@ def bootstrap(db: Session, recent_limit: int) -> BootstrapOut:
             for e in recent
         ],
         active_acks=active_acks,
+        config=runtime_config,
     )
 
 
@@ -424,6 +653,14 @@ def get_component_statuses_for_store(db: Session, store_id: str) -> list[Compone
 def create_ack(db: Session, ack: AckIn) -> tuple[Optional[AckOut], dict]:
     incident = db.scalar(select(IncidentEvent).where(IncidentEvent.event_id == ack.event_id))
     if incident is None:
+        logger.warning(
+            "Ack requested for missing event",
+            extra={
+                "message_type": "ack_update",
+                "event_id": ack.event_id,
+                "state": "missing_event",
+            },
+        )
         return None, {}
 
     row = db.scalar(select(Acknowledgement).where(Acknowledgement.event_id == ack.event_id))
@@ -447,6 +684,15 @@ def create_ack(db: Session, ack: AckIn) -> tuple[Optional[AckOut], dict]:
         row.active = True
 
     db.commit()
+    logger.info(
+        "Acknowledgement upserted",
+        extra={
+            "message_type": "ack_update",
+            "source": "ack",
+            "event_id": ack.event_id,
+            "state": "active",
+        },
+    )
 
     ack_out = AckOut(
         event_id=row.event_id,
@@ -492,9 +738,25 @@ def expire_ack(db: Session, event_id: str) -> Optional[dict]:
         )
     )
     if row is None:
+        logger.warning(
+            "Ack expiry skipped for missing active ack",
+            extra={
+                "message_type": "ack_expired",
+                "event_id": event_id,
+                "state": "not_found",
+            },
+        )
         return None
     row.active = False
     db.commit()
+    logger.info(
+        "Acknowledgement expired",
+        extra={
+            "message_type": "ack_expired",
+            "event_id": event_id,
+            "state": "expired",
+        },
+    )
     return {"kind": "ack_expired", "event_id": event_id}
 
 
@@ -513,6 +775,14 @@ def sweep_expired_acks(db: Session) -> list[dict]:
 
     if payloads:
         db.commit()
+        logger.info(
+            "Ack sweep expired active acknowledgements",
+            extra={
+                "message_type": "ack_sweep",
+                "source": "sweeper",
+                "state": "expired",
+            },
+        )
     return payloads
 
 
@@ -558,4 +828,12 @@ def sweep_timeout_statuses(db: Session) -> list[dict]:
 
     if payloads:
         db.commit()
+        logger.info(
+            "Status timeout sweep marked stale entities",
+            extra={
+                "message_type": "status_timeout",
+                "source": "sweeper",
+                "state": "purple",
+            },
+        )
     return payloads

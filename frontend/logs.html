@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SherMon - Logs</title>
+    <link rel="stylesheet" href="./styles.css?v=20260325k" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>SherMon</h1>
+      <div id="connectionBadge" class="badge stale">disconnected</div>
+    </header>
+
+    <nav class="tabbar" aria-label="Main navigation">
+      <a class="tab" href="./index.html">Alerts</a>
+      <a class="tab" href="./all-stores.html">All Stores</a>
+      <a class="tab" href="./acknowledgements.html">Acknowledgements</a>
+      <div class="menu-group">
+        <button class="tab tab-button admin-toggle active" type="button" aria-expanded="false" aria-controls="adminSubmenu">Admin</button>
+        <div class="submenu" role="menu" aria-label="Admin links">
+          <a class="submenu-item" href="./test-sender.html">Test Sender</a>
+          <a class="submenu-item" href="./admin-config.html">Config</a>
+          <a class="submenu-item" href="./logs.html">Logs</a>
+        </div>
+      </div>
+      <div class="menu-group">
+        <button class="tab tab-button help-toggle" type="button" aria-expanded="false" aria-controls="helpSubmenu">Help</button>
+        <div class="submenu" role="menu" aria-label="Documentation links">
+          <a class="submenu-item" href="./help.html">Help Overview</a>
+          <a class="submenu-item" href="./technical-functionality.html">Technical Functionality</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=technical-specification">Technical Specification</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-developer-usage">API Developer Usage</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-monitoring-events-v1">Monitoring Events API v1</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=readme">Project README</a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="layout single">
+      <section>
+        <h2>Logs</h2>
+        <p class="meta">Filter by time, severity, message type, source, state, event id, IP, or free-text search.</p>
+
+        <form id="logsFilterForm" class="sender-form">
+          <div class="form-row">
+            <label for="logFile">Log File</label>
+            <select id="logFile"></select>
+          </div>
+          <div class="form-row">
+            <label for="logsSince">From Date/Time</label>
+            <input id="logsSince" type="datetime-local" />
+          </div>
+          <div class="form-row">
+            <label for="logsUntil">To Date/Time</label>
+            <input id="logsUntil" type="datetime-local" />
+          </div>
+          <div class="form-row">
+            <label for="logsSeverity">Severity</label>
+            <select id="logsSeverity">
+              <option value="">Any</option>
+              <option value="debug">debug</option>
+              <option value="info">info</option>
+              <option value="warning">warning</option>
+              <option value="error">error</option>
+              <option value="critical">critical</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="logsMessageType">Message Type</label>
+            <input id="logsMessageType" type="text" placeholder="client_event" />
+          </div>
+          <div class="form-row">
+            <label for="logsSource">Source</label>
+            <input id="logsSource" type="text" placeholder="xstore-pos" />
+          </div>
+          <div class="form-row">
+            <label for="logsState">State</label>
+            <input id="logsState" type="text" placeholder="purple" />
+          </div>
+          <div class="form-row">
+            <label for="logsEventId">Event ID</label>
+            <input id="logsEventId" type="text" placeholder="evt-123" />
+          </div>
+          <div class="form-row">
+            <label for="logsClientIp">Client IP</label>
+            <input id="logsClientIp" type="text" placeholder="127.0.0.1" />
+          </div>
+          <div class="form-row">
+            <label for="logsQuery">Free Text Search</label>
+            <input id="logsQuery" type="text" placeholder="search across complete log line" />
+          </div>
+          <div class="form-row">
+            <label for="logsLimit">Rows Per Page</label>
+            <input id="logsLimit" type="number" min="10" max="500" value="100" />
+          </div>
+          <div class="btn-row">
+            <button type="submit">Apply Filters</button>
+            <button type="button" id="logsResetBtn">Reset</button>
+            <button type="button" id="logsPrevBtn">Prev</button>
+            <button type="button" id="logsNextBtn">Next</button>
+          </div>
+        </form>
+
+        <p id="logsSummary" class="meta"></p>
+        <pre id="logsOutput" class="log-output logs-output"></pre>
+      </section>
+    </main>
+
+    <script src="./page-status.js" type="module"></script>
+    <script src="./help-menu.js?v=20260325a"></script>
+    <script src="./logs.js" type="module"></script>
+  </body>
+</html>

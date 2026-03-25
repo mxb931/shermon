@@ -5,7 +5,7 @@
   function closeAll() {
     for (const group of groups) {
       group.classList.remove("open");
-      const button = group.querySelector(".help-toggle");
+      const button = group.querySelector("button[aria-controls]");
       if (button instanceof HTMLButtonElement) {
         button.setAttribute("aria-expanded", "false");
       }
@@ -13,7 +13,7 @@
   }
 
   for (const group of groups) {
-    const button = group.querySelector(".help-toggle");
+    const button = group.querySelector("button[aria-controls]");
     if (!(button instanceof HTMLButtonElement)) continue;
 
     button.addEventListener("click", (event) => {

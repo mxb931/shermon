@@ -16,7 +16,14 @@
       <a class="tab active" href="./index.html">Alerts</a>
       <a class="tab" href="./all-stores.html">All Stores</a>
       <a class="tab" href="./acknowledgements.html">Acknowledgements</a>
-      <a class="tab" href="./test-sender.html">Test Sender</a>
+      <div class="menu-group">
+        <button class="tab tab-button admin-toggle" type="button" aria-expanded="false" aria-controls="adminSubmenu">Admin</button>
+        <div class="submenu" role="menu" aria-label="Admin links">
+          <a class="submenu-item" href="./test-sender.html">Test Sender</a>
+          <a class="submenu-item" href="./admin-config.html">Config</a>
+          <a class="submenu-item" href="./logs.html">Logs</a>
+        </div>
+      </div>
       <div class="menu-group">
         <button class="tab tab-button help-toggle" type="button" aria-expanded="false" aria-controls="helpSubmenu">Help</button>
         <div class="submenu" role="menu" aria-label="Documentation links">
@@ -81,6 +88,6 @@
     </dialog>
 
     <script src="./main.js?v=20260325i" type="module"></script>
-    <script src="./help-menu.js"></script>
+    <script src="./help-menu.js?v=20260325a"></script>
   </body>
 </html>

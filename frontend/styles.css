@@ -880,6 +880,11 @@ section {
   overflow: auto;
 }
 
+.logs-output {
+  max-height: 60vh;
+  overflow: auto;
+}
+
 .markdown-body {
   margin: 0.8rem 0 0;
   background: #fcfaf3;

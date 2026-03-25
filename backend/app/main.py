@@ -1,37 +1,95 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import Optional
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import SessionLocal, engine, get_db
+from .logging_setup import configure_logging, logging_ready
 from .models import Base
 from .realtime import manager
 from .repository import (
     bootstrap,
     create_ack,
     expire_ack,
+    list_log_files,
     get_active_acks,
     get_component_statuses_for_store,
     get_active_incidents_for_entity,
     get_recent_events_for_entity,
+    get_runtime_config,
     get_store_statuses,
     get_summary_counts,
     ingest_event,
+    query_logs,
     sweep_expired_acks,
     sweep_timeout_statuses,
+    update_runtime_config,
 )
-from .schemas import AckIn, AckOut, BootstrapOut, ComponentStatusOut, EventAck, EventIn, IncidentEventOut, StoreStatusOut
+from .schemas import (
+    AckIn,
+    AckOut,
+    BootstrapOut,
+    ComponentStatusOut,
+    EventAck,
+    EventIn,
+    IncidentEventOut,
+    LogFileOut,
+    LogQueryOut,
+    RuntimeConfigOut,
+    RuntimeConfigUpdateIn,
+    StoreStatusOut,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 def _is_expired(dt: datetime) -> bool:
     if dt.tzinfo is not None:
         return dt.astimezone() <= datetime.now().astimezone()
     return dt <= datetime.utcnow()
+
+
+def _client_ip_from_request(request: Request) -> str:
+    forwarded_for = (request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _configure_runtime_logging() -> None:
+    db = SessionLocal()
+    try:
+        runtime_cfg = get_runtime_config(db)
+        configure_logging(
+            log_dir=settings.log_dir,
+            file_name=settings.log_file_name,
+            max_mb=runtime_cfg.log_max_mb,
+            backup_count=runtime_cfg.log_backup_count,
+        )
+    except Exception:
+        configure_logging(
+            log_dir=settings.log_dir,
+            file_name=settings.log_file_name,
+            max_mb=settings.log_max_mb_default,
+            backup_count=settings.log_backup_count_default,
+        )
+        logger.exception("Failed loading runtime logging config, using defaults")
+    finally:
+        db.close()
 
 
 def _ensure_column(table: str, column: str, ddl: str) -> None:
@@ -186,17 +244,37 @@ def ensure_schema_compat() -> None:
     _ensure_column("entity_status", "stale_interval_seconds", "stale_interval_seconds INTEGER")
     _ensure_column("entity_status", "last_checkin_at", "last_checkin_at DATETIME")
     _ensure_column("entity_status", "disabled_at", "disabled_at DATETIME")
+    _ensure_column("runtime_config", "log_max_mb", "log_max_mb INTEGER")
+    _ensure_column("runtime_config", "log_backup_count", "log_backup_count INTEGER")
     _backfill_stale_interval_seconds()
     _backfill_recovery_event_type_to_ok()
 
 
 async def _sweeper_loop() -> None:
     while True:
-        await asyncio.sleep(60)
+        interval_seconds = 60
+        db = SessionLocal()
+        try:
+            interval_seconds = get_runtime_config(db).sweeper_interval_seconds
+        except Exception:
+            interval_seconds = 60
+            logger.exception("Failed to load sweeper interval, using default")
+        finally:
+            db.close()
+
+        await asyncio.sleep(interval_seconds)
         db = SessionLocal()
         try:
             timeout_payloads = sweep_timeout_statuses(db)
             ack_payloads = sweep_expired_acks(db)
+            logger.info(
+                "Sweeper cycle completed",
+                extra={
+                    "message_type": "sweeper_cycle",
+                    "source": "sweeper",
+                    "state": f"timeouts:{len(timeout_payloads)} acks:{len(ack_payloads)}",
+                },
+            )
         finally:
             db.close()
 
@@ -206,16 +284,29 @@ async def _sweeper_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    if not logging_ready():
+        configure_logging(
+            log_dir=settings.log_dir,
+            file_name=settings.log_file_name,
+            max_mb=settings.log_max_mb_default,
+            backup_count=settings.log_backup_count_default,
+        )
+    logger.info("Server startup initiated", extra={"message_type": "startup", "source": "server"})
     ensure_schema_compat()
+    _configure_runtime_logging()
+    logger.info("Schema compatibility check complete", extra={"message_type": "startup", "source": "server"})
     sweeper = asyncio.create_task(_sweeper_loop())
+    logger.info("Sweeper task started", extra={"message_type": "startup", "source": "server"})
     try:
         yield
     finally:
+        logger.info("Server shutdown initiated", extra={"message_type": "shutdown", "source": "server"})
         sweeper.cancel()
         try:
             await sweeper
         except asyncio.CancelledError:
             pass
+        logger.info("Server shutdown complete", extra={"message_type": "shutdown", "source": "server"})
 
 
 app = FastAPI(title="SherMon API", version="0.2.0", lifespan=lifespan)
@@ -229,8 +320,81 @@ app.add_middleware(
 )
 
 
-def require_ingest_key(x_monitor_key: str = Header(default="")) -> None:
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    request_id = str(uuid4())
+    client_ip = _client_ip_from_request(request)
+    request.state.request_id = request_id
+    request.state.client_ip = client_ip
+    start = datetime.utcnow()
+    logger.info(
+        f"Incoming request method={request.method} path={request.url.path}",
+        extra={
+            "request_id": request_id,
+            "client_ip": client_ip,
+            "message_type": "http_request",
+            "source": "http",
+        },
+    )
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = int((datetime.utcnow() - start).total_seconds() * 1000)
+        logger.exception(
+            f"Unhandled request error method={request.method} path={request.url.path} duration_ms={duration_ms}",
+            extra={
+                "request_id": request_id,
+                "client_ip": client_ip,
+                "message_type": "http_request",
+                "source": "http",
+                "state": "exception",
+            },
+        )
+        raise
+
+    duration_ms = int((datetime.utcnow() - start).total_seconds() * 1000)
+    log_fn = logger.warning if response.status_code >= 400 else logger.info
+    log_fn(
+        f"Completed request method={request.method} path={request.url.path} status={response.status_code} duration_ms={duration_ms}",
+        extra={
+            "request_id": request_id,
+            "client_ip": client_ip,
+            "message_type": "http_request",
+            "source": "http",
+            "state": str(response.status_code),
+        },
+    )
+    return response
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning(
+        f"Validation failed path={request.url.path}",
+        extra={
+            "request_id": getattr(request.state, "request_id", "-"),
+            "client_ip": getattr(request.state, "client_ip", _client_ip_from_request(request)),
+            "message_type": "validation_error",
+            "source": "http",
+            "state": "422",
+        },
+    )
+    return JSONResponse(status_code=422, content=jsonable_encoder({"detail": exc.errors()}))
+
+
+def require_ingest_key(request: Request, x_monitor_key: str = Header(default="")) -> None:
     if x_monitor_key != settings.api_key:
+        logger.warning(
+            "Invalid API key",
+            extra={
+                "client_ip": _client_ip_from_request(request),
+                "request_id": getattr(request.state, "request_id", "-"),
+                "message_type": "auth_failure",
+                "source": "auth",
+                "state": "401",
+            },
+        )
         raise HTTPException(status_code=401, detail="invalid monitor API key")
 
 
@@ -241,10 +405,22 @@ def health() -> dict[str, str]:
 
 @app.post("/api/v1/events", response_model=EventAck)
 async def post_event(
+    request: Request,
     event: EventIn,
     _: None = Depends(require_ingest_key),
     db: Session = Depends(get_db),
 ) -> EventAck:
+    client_ip = _client_ip_from_request(request)
+    logger.info(
+        "Client event received",
+        extra={
+            "client_ip": client_ip,
+            "request_id": getattr(request.state, "request_id", "-"),
+            "message_type": "client_event",
+            "source": event.source,
+            "event_id": event.event_id,
+        },
+    )
     accepted, deduplicated, sequence, payload = ingest_event(db, event)
     if payload:
         await manager.broadcast(payload)
@@ -258,6 +434,7 @@ def get_acks(db: Session = Depends(get_db)) -> list[AckOut]:
 
 @app.post("/api/v1/acks", response_model=AckOut)
 async def post_ack(
+    request: Request,
     ack: AckIn,
     _: None = Depends(require_ingest_key),
     db: Session = Depends(get_db),
@@ -269,11 +446,23 @@ async def post_ack(
     if ack_out is None:
         raise HTTPException(status_code=404, detail="event_id not found")
     await manager.broadcast(payload)
+    logger.info(
+        "Ack accepted",
+        extra={
+            "client_ip": _client_ip_from_request(request),
+            "request_id": getattr(request.state, "request_id", "-"),
+            "message_type": "ack_update",
+            "source": "ack",
+            "event_id": ack.event_id,
+            "state": "active",
+        },
+    )
     return ack_out
 
 
 @app.delete("/api/v1/acks/{event_id}")
 async def delete_ack(
+    request: Request,
     event_id: str,
     _: None = Depends(require_ingest_key),
     db: Session = Depends(get_db),
@@ -282,12 +471,90 @@ async def delete_ack(
     if payload is None:
         raise HTTPException(status_code=404, detail="acknowledgement not found")
     await manager.broadcast(payload)
+    logger.info(
+        "Ack manually expired",
+        extra={
+            "client_ip": _client_ip_from_request(request),
+            "request_id": getattr(request.state, "request_id", "-"),
+            "message_type": "ack_expired",
+            "source": "ack",
+            "event_id": event_id,
+            "state": "expired",
+        },
+    )
     return {"expired": True}
 
 
 @app.get("/api/v1/bootstrap", response_model=BootstrapOut)
 def get_bootstrap(db: Session = Depends(get_db)) -> BootstrapOut:
     return bootstrap(db, settings.recent_event_limit)
+
+
+@app.get("/api/v1/config", response_model=RuntimeConfigOut)
+def get_config(db: Session = Depends(get_db)) -> RuntimeConfigOut:
+    return get_runtime_config(db)
+
+
+@app.put("/api/v1/config", response_model=RuntimeConfigOut)
+def put_config(
+    request: Request,
+    payload: RuntimeConfigUpdateIn,
+    _: None = Depends(require_ingest_key),
+    db: Session = Depends(get_db),
+) -> RuntimeConfigOut:
+    updated = update_runtime_config(db, payload)
+    _configure_runtime_logging()
+    logger.info(
+        "Runtime config updated via API",
+        extra={
+            "client_ip": _client_ip_from_request(request),
+            "request_id": getattr(request.state, "request_id", "-"),
+            "message_type": "runtime_config_update",
+            "source": "config",
+            "state": "applied",
+        },
+    )
+    return updated
+
+
+@app.get("/api/v1/log-files", response_model=list[LogFileOut])
+def get_log_files() -> list[LogFileOut]:
+    files = list_log_files(settings.log_dir, settings.log_file_name)
+    return [LogFileOut(**item) for item in files]
+
+
+@app.get("/api/v1/logs", response_model=LogQueryOut)
+def get_logs(
+    file_name: Optional[str] = None,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    severity: Optional[str] = None,
+    message_type: Optional[str] = None,
+    source: Optional[str] = None,
+    state: Optional[str] = None,
+    event_id: Optional[str] = None,
+    client_ip: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = Query(default=200, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
+) -> LogQueryOut:
+    payload = query_logs(
+        log_dir=settings.log_dir,
+        active_file_name=settings.log_file_name,
+        file_name=file_name,
+        since=since,
+        until=until,
+        severity=severity,
+        message_type=message_type,
+        source=source,
+        state=state,
+        event_id=event_id,
+        client_ip=client_ip,
+        q=q,
+        limit=limit,
+        offset=offset,
+    )
+    return LogQueryOut(**payload)
 
 
 @app.get("/api/v1/summary")
@@ -329,11 +596,39 @@ def get_recent_events_by_entity(
 
 @app.websocket("/ws/updates")
 async def ws_updates(websocket: WebSocket):
+    client_ip = websocket.client.host if websocket.client else "unknown"
     await manager.connect(websocket)
+    logger.info(
+        "WebSocket connected",
+        extra={
+            "client_ip": client_ip,
+            "message_type": "websocket",
+            "source": "ws",
+            "state": "connected",
+        },
+    )
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
+        logger.info(
+            "WebSocket disconnected",
+            extra={
+                "client_ip": client_ip,
+                "message_type": "websocket",
+                "source": "ws",
+                "state": "disconnected",
+            },
+        )
     except Exception:
+        logger.exception(
+            "WebSocket error",
+            extra={
+                "client_ip": client_ip,
+                "message_type": "websocket",
+                "source": "ws",
+                "state": "error",
+            },
+        )
         await manager.disconnect(websocket)

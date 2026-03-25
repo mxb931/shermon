@@ -14,10 +14,11 @@ const state = {
   entityAlertsContext: null,
   pingTimerId: null,
   entityEventHistoryLimit: 1000,
+  entityEventHistoryLimitOptions: [250, 500, 1000, 2000],
 };
 
-const ENTITY_EVENT_HISTORY_LIMIT = 1000;
-const ENTITY_EVENT_HISTORY_LIMIT_OPTIONS = [250, 500, 1000, 2000];
+const FALLBACK_ENTITY_EVENT_HISTORY_LIMIT = 1000;
+const FALLBACK_ENTITY_EVENT_HISTORY_LIMIT_OPTIONS = [250, 500, 1000, 2000];
 
 const FILTER_ALERT_STORES = document.body.dataset.alertsFilter === "true";
 
@@ -57,12 +58,7 @@ function ensureEntityAlertsModal() {
                 <h4>Last 24 Hours Events</h4>
                 <label class="events-limit-control" for="entityEventsLimitSelect">
                   Rows
-                  <select id="entityEventsLimitSelect" aria-label="Event history row limit">
-                    <option value="250">250</option>
-                    <option value="500">500</option>
-                    <option value="1000" selected>1000</option>
-                    <option value="2000">2000</option>
-                  </select>
+                  <select id="entityEventsLimitSelect" aria-label="Event history row limit"></select>
                 </label>
               </div>
               <p class="meta">All event types for this component, newest first.</p>
@@ -84,9 +80,43 @@ function ensureEntityAlertsModal() {
   entityAlertsList = document.getElementById("entityAlertsList");
   entityEventsLog = document.getElementById("entityEventsLog");
   entityEventsLimitSelect = document.getElementById("entityEventsLimitSelect");
-  if (entityEventsLimitSelect) {
-    entityEventsLimitSelect.value = String(state.entityEventHistoryLimit);
+  renderEntityHistoryLimitOptions();
+}
+
+function sanitizeHistoryLimitOptions(options) {
+  if (!Array.isArray(options)) return FALLBACK_ENTITY_EVENT_HISTORY_LIMIT_OPTIONS.slice();
+  const values = options
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 50 && value <= 5000)
+    .map((value) => Math.floor(value));
+  const uniqueSorted = [...new Set(values)].sort((a, b) => a - b);
+  return uniqueSorted.length ? uniqueSorted : FALLBACK_ENTITY_EVENT_HISTORY_LIMIT_OPTIONS.slice();
+}
+
+function applyRuntimeConfig(config) {
+  const options = sanitizeHistoryLimitOptions(config?.entity_history_limit_options);
+  state.entityEventHistoryLimitOptions = options;
+
+  const preferred = Number(config?.entity_history_default_limit);
+  if (Number.isFinite(preferred) && options.includes(preferred)) {
+    state.entityEventHistoryLimit = preferred;
+  } else if (!options.includes(state.entityEventHistoryLimit)) {
+    state.entityEventHistoryLimit = options[0] || FALLBACK_ENTITY_EVENT_HISTORY_LIMIT;
   }
+
+  renderEntityHistoryLimitOptions();
+}
+
+function renderEntityHistoryLimitOptions() {
+  if (!entityEventsLimitSelect) return;
+  const options = state.entityEventHistoryLimitOptions.length
+    ? state.entityEventHistoryLimitOptions
+    : FALLBACK_ENTITY_EVENT_HISTORY_LIMIT_OPTIONS;
+
+  entityEventsLimitSelect.innerHTML = options
+    .map((value) => `<option value="${value}">${value}</option>`)
+    .join("");
+  entityEventsLimitSelect.value = String(state.entityEventHistoryLimit);
 }
 
 function truncateText(value, maxLength) {
@@ -424,6 +454,8 @@ async function loadBootstrap() {
   if (!response.ok) throw new Error("Failed bootstrap");
   const payload = await response.json();
 
+  applyRuntimeConfig(payload.config);
+
   for (const status of payload.statuses) {
     const key = `${status.store_id}:${status.component}`;
     state.statuses.set(key, status);
@@ -565,7 +597,7 @@ function currentEntityHistoryLimit() {
   if (Number.isFinite(selected) && selected > 0) {
     return selected;
   }
-  return ENTITY_EVENT_HISTORY_LIMIT;
+  return FALLBACK_ENTITY_EVENT_HISTORY_LIMIT;
 }
 
 async function loadEntityEventsHistory(storeId, component) {
@@ -818,7 +850,7 @@ function wireEntityStatusActions() {
   if (entityEventsLimitSelect) {
     entityEventsLimitSelect.addEventListener("change", async () => {
       const selected = Number(entityEventsLimitSelect.value);
-      if (ENTITY_EVENT_HISTORY_LIMIT_OPTIONS.includes(selected)) {
+      if (state.entityEventHistoryLimitOptions.includes(selected)) {
         state.entityEventHistoryLimit = selected;
       }
       if (!entityAlertsModal.open || !state.entityAlertsContext) return;

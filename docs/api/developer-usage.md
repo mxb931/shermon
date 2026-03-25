@@ -319,7 +319,23 @@ Response shape:
       "source": "xstore-pos",
       "happened_at": "2026-03-20T15:11:00",
       "active": true,
-      "metadata": {} defaults to 200 (configurable via `MONITOR_RECENT_EVENT_LIMIT`).
+      "metadata": {}
+    }
+  ],
+  "active_acks": [],
+  "config": {
+    "sweeper_interval_seconds": 60,
+    "entity_history_default_limit": 1000,
+    "entity_history_limit_options": [250, 500, 1000, 2000],
+    "log_max_mb": 50,
+    "log_backup_count": 20
+  }
+}
+```
+
+Notes:
+
+- `recent_events` max size defaults to 200 (configurable via `MONITOR_RECENT_EVENT_LIMIT`).
 - `status_color` values are `green`, `yellow`, `red`, `purple`, `white`.
 
 ---
@@ -415,6 +431,173 @@ Example request:
 
 ```bash
 curl "http://127.0.0.1:8000/api/v1/entity-events?store_id=store-104&component=payments&hours=24&limit=1000"
+```
+
+Example response:
+
+```json
+[
+  {
+    "event_id": "evt-demo-1002",
+    "dedup_key": "PAY_TIMEOUT_DEMO",
+    "store_id": "store-104",
+    "component": "payments",
+    "event_type": "ok",
+    "severity": "info",
+    "message": "Gateway recovered",
+    "source": "xstore-pos",
+    "happened_at": "2026-03-20T15:12:00",
+    "active": false,
+    "metadata": {}
+  }
+]
+```
+
+---
+
+## `GET /api/v1/config`
+
+Returns runtime configuration used by sweeper timing and event history rows.
+
+No auth required.
+
+Example request:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/config"
+```
+
+Example response:
+
+```json
+{
+  "sweeper_interval_seconds": 60,
+  "entity_history_default_limit": 1000,
+  "entity_history_limit_options": [250, 500, 1000, 2000],
+  "log_max_mb": 50,
+  "log_backup_count": 20
+}
+```
+
+---
+
+## `PUT /api/v1/config`
+
+Updates runtime config values.
+
+Auth required: `X-Monitor-Key` header.
+
+Example request:
+
+```bash
+curl -X PUT "http://127.0.0.1:8000/api/v1/config" \
+  -H "Content-Type: application/json" \
+  -H "X-Monitor-Key: dev-monitor-key" \
+  -d '{
+    "sweeper_interval_seconds": 30,
+    "entity_history_default_limit": 500,
+    "entity_history_limit_options": [250, 500, 1000],
+    "log_max_mb": 50,
+    "log_backup_count": 20
+  }'
+```
+
+Validation rules:
+
+- `sweeper_interval_seconds`: integer, `15..3600`
+- `entity_history_default_limit`: integer, `50..5000`
+- `entity_history_limit_options`: integer array, each value `50..5000`
+- `entity_history_default_limit` must be included in `entity_history_limit_options`
+- `log_max_mb`: integer, `1..1024`
+- `log_backup_count`: integer, `1..200`
+
+---
+
+## `GET /api/v1/log-files`
+
+Returns available server log files from the configured log directory.
+
+No auth required.
+
+Example request:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/log-files"
+```
+
+Example response:
+
+```json
+[
+  {
+    "name": "shermon.log",
+    "size_bytes": 12450,
+    "modified_at": "2026-03-25T21:10:00",
+    "active": true
+  },
+  {
+    "name": "shermon.log.1",
+    "size_bytes": 52428800,
+    "modified_at": "2026-03-25T20:50:00",
+    "active": false
+  }
+]
+```
+
+---
+
+## `GET /api/v1/logs`
+
+Returns parsed log entries with server-side filtering and pagination.
+
+No auth required.
+Current deployment assumption: this service is internal-only behind a corporate firewall/intranet.
+Authentication/authorization for log read APIs is planned for a future release.
+
+Query parameters:
+
+| Parameter | Type | Required | Notes |
+|---|---|---|---|
+| `file_name` | string | No | Defaults to active log file |
+| `since` | datetime string | No | Inclusive lower bound |
+| `until` | datetime string | No | Inclusive upper bound |
+| `severity` | string | No | Example: `info`, `warning`, `error` |
+| `message_type` | string | No | Example: `client_event`, `status_timeout` |
+| `source` | string | No | Partial match |
+| `state` | string | No | Partial match |
+| `event_id` | string | No | Partial match |
+| `client_ip` | string | No | Partial match (IP filter) |
+| `q` | string | No | Free-text search across full log line |
+| `limit` | integer | No | Default `200`, min `1`, max `2000` |
+| `offset` | integer | No | Default `0` |
+
+Example request (IP + free-text):
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/logs?client_ip=127.0.0.1&severity=info&q=event&limit=100&offset=0"
+```
+
+Example response:
+
+```json
+{
+  "total": 2,
+  "limit": 100,
+  "offset": 0,
+  "items": [
+    {
+      "timestamp": "2026-03-25T21:10:21.123000",
+      "severity": "info",
+      "message_type": "client_event",
+      "source": "smoke-test",
+      "state": null,
+      "event_id": "evt-T01-1742940000",
+      "client_ip": "127.0.0.1",
+      "message": "Client event received",
+      "raw": "2026-03-25 21:10:21,123 level=INFO logger=app.main client_ip=127.0.0.1 request_id=... message_type=client_event source=smoke-test state=- event_id=evt-T01-1742940000 msg=Client event received"
+    }
+  ]
+}
 ```
 
 ---
@@ -513,7 +696,8 @@ Each message has:
     "message": "Gateway recovered",
     "source": "xstore-pos",
     "happened_at": "2026-03-20T15:12:00",
-    "active": false
+    "active": false,
+    "metadata": {}
   },
   "status": {
     "store_id": "store-104",
@@ -541,6 +725,10 @@ Additional websocket kinds:
 | `MONITOR_API_KEY` | API key for event ingest auth | `dev-monitor-key` |
 | `MONITOR_DATABASE_URL` | Database connection URL | `sqlite:///.../backend/monitor.db` |
 | `MONITOR_RECENT_EVENT_LIMIT` | Max events in bootstrap response | `200` |
+| `MONITOR_LOG_DIR` | Directory for server log files | `.../backend/logs` |
+| `MONITOR_LOG_FILE_NAME` | Active server log file name | `shermon.log` |
+| `MONITOR_LOG_MAX_MB` | Default max log file size before rollover | `50` |
+| `MONITOR_LOG_BACKUP_COUNT` | Default number of rotated files to retain | `20` |
 
 ## Developer Tips
 

@@ -124,6 +124,63 @@ All event responses from `GET /api/v1/entity-events`, `GET /api/v1/active-alerts
 - `active`: `true` while the event is an open incident; `false` once closed.
 - `metadata`: key-value context map supplied at ingest. Empty object `{}` when not provided.
 
+## Runtime Config API
+
+### GET /api/v1/config
+
+Returns runtime configuration values used by the dashboard and sweeper:
+
+- `sweeper_interval_seconds`
+- `entity_history_default_limit`
+- `entity_history_limit_options`
+- `log_max_mb`
+- `log_backup_count`
+
+### PUT /api/v1/config
+
+Requires `X-Monitor-Key` header.
+
+Updates runtime configuration values.
+
+Payload fields:
+
+- `sweeper_interval_seconds` (integer, min `15`, max `3600`)
+- `entity_history_default_limit` (integer, min `50`, max `5000`)
+- `entity_history_limit_options` (array of integers, each `50..5000`, must include `entity_history_default_limit`)
+- `log_max_mb` (integer, min `1`, max `1024`)
+- `log_backup_count` (integer, min `1`, max `200`)
+
+## Logs API
+
+### GET /api/v1/log-files
+
+Returns available log files in the configured log directory.
+
+No auth required.
+Current deployment assumption: this service is internal-only behind a corporate firewall/intranet.
+Authentication/authorization for log read APIs is planned for a future release.
+
+### GET /api/v1/logs
+
+Returns parsed server log entries with filters and pagination.
+
+No auth required.
+
+Supported query parameters:
+
+- `file_name`
+- `since`
+- `until`
+- `severity`
+- `message_type`
+- `source`
+- `state`
+- `event_id`
+- `client_ip`
+- `q` (free-text search)
+- `limit`
+- `offset`
+
 ## Hierarchy status APIs
 
 ### GET /api/v1/status/stores
