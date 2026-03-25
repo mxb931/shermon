@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SherMon - Technical Functionality</title>
+    <link rel="stylesheet" href="./styles.css?v=20260323b" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>SherMon</h1>
+      <div id="connectionBadge" class="badge stale">disconnected</div>
+    </header>
+
+    <nav class="tabbar" aria-label="Main navigation">
+      <a class="tab" href="./index.html">Alerts</a>
+      <a class="tab" href="./all-stores.html">All Stores</a>
+      <a class="tab" href="./acknowledgements.html">Acknowledgements</a>
+      <a class="tab" href="./test-sender.html">Test Sender</a>
+      <div class="menu-group">
+        <button class="tab tab-button help-toggle" type="button" aria-expanded="false" aria-controls="helpSubmenu">Help</button>
+        <div class="submenu" role="menu" aria-label="Documentation links">
+          <a class="submenu-item" href="./help.html">Help Overview</a>
+          <a class="submenu-item" href="./technical-functionality.html">Technical Functionality</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=technical-specification">Technical Specification</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-developer-usage">API Developer Usage</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-monitoring-events-v1">Monitoring Events API v1</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=readme">Project README</a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="layout single">
+      <section>
+        <h2>Technical Functionality</h2>
+
+        <h3>How The Stale Sweeper Works</h3>
+        <p>The stale monitor has two parts: event ingest arms or clears the timeout expectation, and a background sweeper periodically checks whether that expectation was missed.</p>
+
+        <h3>1. Event ingest arms or clears stale monitoring</h3>
+        <ul class="help-list">
+          <li>Every ingested event updates the entity status row for that store/component.</li>
+          <li><strong>last_checkin_at</strong> is always set to the event time.</li>
+          <li>If the event includes <strong>stale_interval</strong>, SherMon parses it and stores it as <strong>stale_interval_seconds</strong>.</li>
+          <li>If the event omits <strong>stale_interval</strong>, SherMon explicitly clears the stale expectation by setting <strong>stale_interval_seconds</strong> to null.</li>
+          <li>If the component is disabled, stale monitoring is also forced off.</li>
+        </ul>
+
+        <p>That means the intended behavior is one-shot:</p>
+        <ul class="help-list">
+          <li>Event with <strong>stale_interval</strong>: arm one timeout window.</li>
+          <li>Later event without <strong>stale_interval</strong>: clear that timeout window.</li>
+          <li>Later event with a new <strong>stale_interval</strong>: replace the old timeout window.</li>
+        </ul>
+
+        <h3>2. What the sweeper checks</h3>
+        <p>A background sweeper scans entity status rows and only evaluates rows where all of these are true:</p>
+        <ul class="help-list">
+          <li>The component is not disabled.</li>
+          <li><strong>stale_interval_seconds</strong> is not null.</li>
+          <li><strong>last_checkin_at</strong> is not null.</li>
+        </ul>
+
+        <p>For each matching row, SherMon computes elapsed time as <strong>now - last_checkin_at</strong>.</p>
+        <ul class="help-list">
+          <li>If elapsed time is less than or equal to the stored stale interval, nothing happens.</li>
+          <li>If the status is already purple, nothing happens.</li>
+          <li>Otherwise, the status changes to <strong>purple</strong>.</li>
+        </ul>
+
+        <p>When that happens, SherMon updates:</p>
+        <ul class="help-list">
+          <li><strong>status_color = purple</strong></li>
+          <li><strong>last_changed_at = now</strong></li>
+          <li><strong>last_message = Heartbeat timeout: expected green check-in was missed</strong></li>
+        </ul>
+
+        <h3>3. When the sweeper runs</h3>
+        <p>The sweeper runs in the backend on a 60-second loop. It sleeps for 60 seconds, opens a database session, runs timeout checks and acknowledgement expiry checks, then broadcasts any resulting realtime updates.</p>
+
+        <p>That means a stale interval of <strong>1m</strong> is evaluated on the next sweeper pass after that minute has elapsed, not by a per-entity timer.</p>
+
+        <h3>4. How the UI turns purple</h3>
+        <p>When the sweeper marks a component stale, it emits a websocket message of kind <strong>status_timeout</strong>. The frontend receives that payload, updates the in-memory status for that store/component, and re-renders the dashboard.</p>
+
+        <h3>5. What the sweeper does not do</h3>
+        <ul class="help-list">
+          <li>It does not create a new incident event row.</li>
+          <li>It does not increment active incident count.</li>
+          <li>It does not re-arm stale monitoring by itself.</li>
+          <li>It only reads the current entity status row and reacts to whatever stale expectation is currently stored there.</li>
+        </ul>
+
+        <h3>6. Expected one-shot behavior</h3>
+        <p>If you send an event with <strong>stale_interval</strong>, wait until it turns purple, and then send a later event for the same store/component with no <strong>stale_interval</strong>, the next event should clear stale monitoring and return the component to normal event-driven behavior.</p>
+
+        <p>In other words: if <strong>stale_interval_seconds</strong> is null after the later event, the sweeper should skip that row and it should not turn purple again unless a future event re-arms stale monitoring.</p>
+      </section>
+    </main>
+
+    <script src="./page-status.js" type="module"></script>
+    <script src="./help-menu.js"></script>
+  </body>
+</html>

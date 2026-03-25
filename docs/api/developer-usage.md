@@ -318,15 +318,8 @@ Response shape:
       "message": "Gateway timeout after retries",
       "source": "xstore-pos",
       "happened_at": "2026-03-20T15:11:00",
-      "active": true
-    }
-  ]
-}
-```
-
-Notes:
-
-- `recent_events` max size defaults to 200 (configurable via `MONITOR_RECENT_EVENT_LIMIT`).
+      "active": true,
+      "metadata": {} defaults to 200 (configurable via `MONITOR_RECENT_EVENT_LIMIT`).
 - `status_color` values are `green`, `yellow`, `red`, `purple`, `white`.
 
 ---
@@ -388,7 +381,8 @@ Example response:
     "message": "Gateway timeout after retries",
     "source": "xstore-pos",
     "happened_at": "2026-03-20T15:11:00",
-    "active": true
+    "active": true,
+    "metadata": {}
   }
 ]
 ```

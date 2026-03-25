@@ -544,13 +544,16 @@ function formatEventLogLine(event) {
   const source = padOrTrim(event.source || "-", 16);
   const state = padOrTrim(event.active ? "ACTIVE" : "CLOSED", 6);
   const eventId = padOrTrim(event.event_id || "-", 20);
-  return `${timestamp} | ${severity} | ${message} | ${eventType} | ${source} | ${state} | ${eventId}`;
+  const meta = event.metadata && Object.keys(event.metadata).length
+    ? JSON.stringify(event.metadata)
+    : "-";
+  return `${timestamp} | ${severity} | ${message} | ${eventType} | ${source} | ${state} | ${eventId} | ${meta}`;
 }
 
 function renderEntityEventsLog(historyEvents) {
   if (!entityEventsLog) return;
-  const header = "TIMESTAMP                | SEVERITY | MESSAGE | TYPE    | SOURCE           | STATE  | EVENT_ID";
-  const divider = "-------------------------+----------+---------+---------+------------------+--------+----------------------";
+  const header = "TIMESTAMP                | SEVERITY | MESSAGE | TYPE    | SOURCE           | STATE  | EVENT_ID             | METADATA";
+  const divider = "-------------------------+----------+---------+---------+------------------+--------+----------------------+----------";
   const lines = historyEvents.length
     ? historyEvents.map((historyEvent) => formatEventLogLine(historyEvent))
     : ["(no events for this component in the last 24 hours)"];
@@ -675,11 +678,19 @@ async function openEntityAlertsModal(storeId, component) {
             : `<button class=\"ack-btn\" data-ack-event=\"${eventId}\">Acknowledge</button>`;
           const resolving = state.pendingResolveEventIds.has(event.event_id);
           const resolveButton = `<button class=\"resolve-btn\" data-resolve-event=\"${eventId}\" ${resolving ? "disabled" : ""}>${resolving ? "Resolving..." : "Resolve"}</button>`;
+          const hasMeta = event.metadata && Object.keys(event.metadata).length > 0;
+          const metaSection = hasMeta
+            ? `<div class="metadata-expand">
+                <button class="metadata-toggle-btn" type="button" aria-expanded="false">Metadata</button>
+                <pre class="metadata-json" hidden>${escapeHtml(JSON.stringify(event.metadata, null, 2))}</pre>
+              </div>`
+            : "";
           return `
             <li class="incident-item ${severityClass}">
               <strong>[${severity}]</strong> ${eventType}${acked}<br />
               ${message}<br />
               <small>${happenedAt} | ${source} | ${eventIdCompact}</small><br />
+              ${metaSection}
               <div class="incident-actions">
                 ${ackButton}
                 ${resolveButton}
@@ -826,6 +837,18 @@ function wireEntityStatusActions() {
 
 function wireAckActions() {
   if (!entityAlertsList) return;
+  const onMetadataToggleClick = (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const btn = target.closest(".metadata-toggle-btn");
+    if (!(btn instanceof HTMLButtonElement)) return;
+    const pre = btn.nextElementSibling;
+    if (!pre) return;
+    const expanded = btn.getAttribute("aria-expanded") === "true";
+    btn.setAttribute("aria-expanded", String(!expanded));
+    pre.hidden = expanded;
+  };
+
   const onAckClick = (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
@@ -847,6 +870,7 @@ function wireAckActions() {
   };
 
   incidentList.addEventListener("click", onAckClick);
+  entityAlertsList.addEventListener("click", onMetadataToggleClick);
   entityAlertsList.addEventListener("click", onAckClick);
   entityAlertsList.addEventListener("click", onResolveClick);
 

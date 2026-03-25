@@ -436,6 +436,53 @@ check("ack delete returns 200", status == 200, body)
 check("ack delete marks expired true", body.get("expired") is True, body)
 
 
+print("\n--- Metadata round-trip ---")
+meta_payload = {
+    "event_id": f"evt-meta-{RUN_ID}",
+    "dedup_key": f"meta-dk-{RUN_ID}",
+    "store_id": "store-104",
+    "component": "meta-component",
+    "event_type": "problem",
+    "severity": "warning",
+    "message": "metadata round-trip test",
+    "source": "smoke-test",
+    "metadata": {"region": "west", "batch": 42, "tags": ["a", "b"]},
+}
+status, body = request("POST", "/api/v1/events", meta_payload)
+check("metadata event accepted", status == 200 and body.get("accepted") is True, body)
+
+status, body = request("GET", f"/api/v1/active-alerts?store_id=store-104&component=meta-component")
+check("metadata event in active-alerts", status == 200 and any(e.get("event_id") == f"evt-meta-{RUN_ID}" for e in body), body)
+meta_alert = next((e for e in body if e.get("event_id") == f"evt-meta-{RUN_ID}"), {})
+check("active-alerts metadata field present", "metadata" in meta_alert, meta_alert)
+check("active-alerts metadata values correct", meta_alert.get("metadata") == {"region": "west", "batch": 42, "tags": ["a", "b"]}, meta_alert.get("metadata"))
+
+status, body = request("GET", f"/api/v1/entity-events?store_id=store-104&component=meta-component&hours=24")
+check("metadata event in entity-events", status == 200 and any(e.get("event_id") == f"evt-meta-{RUN_ID}" for e in body), body)
+meta_hist = next((e for e in body if e.get("event_id") == f"evt-meta-{RUN_ID}"), {})
+check("entity-events metadata field present", "metadata" in meta_hist, meta_hist)
+check("entity-events metadata values correct", meta_hist.get("metadata") == {"region": "west", "batch": 42, "tags": ["a", "b"]}, meta_hist.get("metadata"))
+
+status, bootstrap_body = request("GET", "/api/v1/bootstrap")
+recent_meta = next((e for e in bootstrap_body.get("recent_events", []) if e.get("event_id") == f"evt-meta-{RUN_ID}"), None)
+if recent_meta is not None:
+    check("bootstrap recent_events metadata field present", "metadata" in recent_meta, recent_meta)
+    check("bootstrap recent_events metadata values correct", recent_meta.get("metadata") == {"region": "west", "batch": 42, "tags": ["a", "b"]}, recent_meta.get("metadata"))
+
+status, body = request("POST", "/api/v1/events", {
+    "event_id": f"evt-meta-ok-{RUN_ID}",
+    "dedup_key": f"meta-dk-{RUN_ID}",
+    "store_id": "store-104",
+    "component": "meta-component",
+    "event_type": "ok",
+    "severity": "info",
+    "message": "metadata round-trip recovery",
+    "source": "smoke-test",
+    "metadata": {},
+})
+check("metadata recovery accepted", status == 200 and body.get("accepted") is True, body)
+
+
 passed = sum(results)
 failed = len(results) - passed
 print(f"\n{'='*40}")

@@ -97,6 +97,33 @@ Response behavior:
 - Ordered newest first.
 - Events only; acknowledgement activity is not included.
 
+### Event output fields
+
+All event responses from `GET /api/v1/entity-events`, `GET /api/v1/active-alerts`, and the `recent_events` list in `/api/v1/bootstrap` return the same event object shape:
+
+```json
+{
+  "event_id": "evt-20260320-001",
+  "dedup_key": "PAYMENT_GATEWAY_TIMEOUT",
+  "store_id": "store-104",
+  "component": "payments",
+  "event_type": "problem",
+  "severity": "critical",
+  "message": "Gateway timeout after 2 retries",
+  "source": "xstore-pos",
+  "happened_at": "2026-03-20T14:37:00",
+  "active": true,
+  "metadata": {
+    "terminal_id": "lane-3",
+    "order_id": "A12810"
+  }
+}
+```
+
+- `happened_at`: UTC timestamp stamped at ingest time.
+- `active`: `true` while the event is an open incident; `false` once closed.
+- `metadata`: key-value context map supplied at ingest. Empty object `{}` when not provided.
+
 ## Hierarchy status APIs
 
 ### GET /api/v1/status/stores

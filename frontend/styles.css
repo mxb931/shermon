@@ -781,6 +781,37 @@ section {
   opacity: 0.65;
 }
 
+.metadata-expand {
+  margin-top: 0.35rem;
+}
+
+.metadata-toggle-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 0.72rem;
+  color: var(--muted, #888);
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.metadata-toggle-btn:hover {
+  color: var(--text, #333);
+}
+
+.metadata-json {
+  margin-top: 0.3rem;
+  padding: 0.4rem 0.6rem;
+  background: #f5f5f5;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
 .badge {
   border-radius: 999px;
   padding: 0.25rem 0.55rem;

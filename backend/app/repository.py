@@ -223,6 +223,7 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
             "happened_at": happened_at_naive.isoformat(),
             "expires_at": incident.expires_at.isoformat() if incident.expires_at else None,
             "active": incident.active,
+            "metadata": json.loads(incident.metadata_json or "{}"),
         },
         "status": {
             "store_id": status.store_id,
@@ -291,6 +292,7 @@ def bootstrap(db: Session, recent_limit: int) -> BootstrapOut:
                 source=e.source,
                 happened_at=e.happened_at,
                 active=e.active,
+                metadata=json.loads(e.metadata_json or "{}"),
             )
             for e in recent
         ],
@@ -329,6 +331,7 @@ def get_active_incidents_for_entity(db: Session, store_id: str, component: str) 
             source=row.source,
             happened_at=row.happened_at,
             active=row.active,
+            metadata=json.loads(row.metadata_json or "{}"),
         )
         for row in rows
     ]
@@ -368,6 +371,7 @@ def get_recent_events_for_entity(
             source=row.source,
             happened_at=row.happened_at,
             active=row.active,
+            metadata=json.loads(row.metadata_json or "{}"),
         )
         for row in rows
     ]
