@@ -12,6 +12,7 @@ const eventIdInput = document.getElementById("logsEventId");
 const clientIpInput = document.getElementById("logsClientIp");
 const queryInput = document.getElementById("logsQuery");
 const limitInput = document.getElementById("logsLimit");
+const liveViewInput = document.getElementById("logsLiveView");
 const resetBtn = document.getElementById("logsResetBtn");
 const prevBtn = document.getElementById("logsPrevBtn");
 const nextBtn = document.getElementById("logsNextBtn");
@@ -20,6 +21,8 @@ const summary = document.getElementById("logsSummary");
 
 let offset = 0;
 let lastTotal = 0;
+let liveTimerId = null;
+const LIVE_REFRESH_MS = 2000;
 
 function localIso(value) {
   if (!value) {
@@ -33,6 +36,9 @@ function localIso(value) {
 }
 
 function buildQuery() {
+  if (liveViewInput.checked) {
+    offset = 0;
+  }
   const params = new URLSearchParams();
   const fileName = fileSelect.value.trim();
   if (fileName) {
@@ -86,10 +92,35 @@ function renderRows(payload) {
   });
 
   output.textContent = lines.length ? lines.join("\n") : "No logs matched the current filters.";
-  summary.textContent = `Showing ${payload.items.length} of ${payload.total} rows (offset ${payload.offset}).`;
+  const liveText = liveViewInput.checked ? ` Live: ON (${LIVE_REFRESH_MS / 1000}s refresh)` : " Live: OFF";
+  summary.textContent = `Showing ${payload.items.length} of ${payload.total} rows (offset ${payload.offset}).${liveText}`;
 
-  prevBtn.disabled = payload.offset <= 0;
-  nextBtn.disabled = payload.offset + payload.limit >= payload.total;
+  if (liveViewInput.checked) {
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+  } else {
+    prevBtn.disabled = payload.offset <= 0;
+    nextBtn.disabled = payload.offset + payload.limit >= payload.total;
+  }
+}
+
+function stopLiveView() {
+  if (liveTimerId !== null) {
+    clearInterval(liveTimerId);
+    liveTimerId = null;
+  }
+}
+
+function startLiveView() {
+  stopLiveView();
+  if (!liveViewInput.checked) {
+    return;
+  }
+  liveTimerId = window.setInterval(() => {
+    loadLogs().catch((error) => {
+      output.textContent = String(error);
+    });
+  }, LIVE_REFRESH_MS);
 }
 
 async function loadFiles() {
@@ -136,6 +167,7 @@ resetBtn.addEventListener("click", async () => {
   form.reset();
   limitInput.value = "100";
   offset = 0;
+  stopLiveView();
   try {
     await loadLogs();
   } catch (error) {
@@ -166,10 +198,25 @@ nextBtn.addEventListener("click", async () => {
   }
 });
 
+liveViewInput.addEventListener("change", async () => {
+  offset = 0;
+  if (liveViewInput.checked) {
+    startLiveView();
+  } else {
+    stopLiveView();
+  }
+  try {
+    await loadLogs();
+  } catch (error) {
+    output.textContent = String(error);
+  }
+});
+
 (async () => {
   try {
     await loadFiles();
     await loadLogs();
+    startLiveView();
   } catch (error) {
     output.textContent = String(error);
   }

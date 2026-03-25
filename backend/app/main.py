@@ -80,6 +80,14 @@ def _configure_runtime_logging() -> None:
             max_mb=runtime_cfg.log_max_mb,
             backup_count=runtime_cfg.log_backup_count,
         )
+        logger.info(
+            "Runtime logging configuration applied",
+            extra={
+                "message_type": "startup",
+                "source": "server",
+                "state": "logging_configured",
+            },
+        )
     except Exception:
         configure_logging(
             log_dir=settings.log_dir,
@@ -251,62 +259,92 @@ def ensure_schema_compat() -> None:
 
 
 async def _sweeper_loop() -> None:
-    while True:
-        interval_seconds = 60
-        db = SessionLocal()
-        try:
-            interval_seconds = get_runtime_config(db).sweeper_interval_seconds
-        except Exception:
+    logger.info("Sweeper loop started", extra={"message_type": "startup", "source": "sweeper", "state": "running"})
+    try:
+        while True:
             interval_seconds = 60
-            logger.exception("Failed to load sweeper interval, using default")
-        finally:
-            db.close()
+            db = SessionLocal()
+            try:
+                interval_seconds = get_runtime_config(db).sweeper_interval_seconds
+            except Exception:
+                interval_seconds = 60
+                logger.exception("Failed to load sweeper interval, using default")
+            finally:
+                db.close()
 
-        await asyncio.sleep(interval_seconds)
-        db = SessionLocal()
-        try:
-            timeout_payloads = sweep_timeout_statuses(db)
-            ack_payloads = sweep_expired_acks(db)
-            logger.info(
-                "Sweeper cycle completed",
-                extra={
-                    "message_type": "sweeper_cycle",
-                    "source": "sweeper",
-                    "state": f"timeouts:{len(timeout_payloads)} acks:{len(ack_payloads)}",
-                },
-            )
-        finally:
-            db.close()
+            await asyncio.sleep(interval_seconds)
+            db = SessionLocal()
+            try:
+                timeout_payloads = sweep_timeout_statuses(db)
+                ack_payloads = sweep_expired_acks(db)
+                logger.info(
+                    "Sweeper cycle completed",
+                    extra={
+                        "message_type": "sweeper_cycle",
+                        "source": "sweeper",
+                        "state": f"timeouts:{len(timeout_payloads)} acks:{len(ack_payloads)}",
+                    },
+                )
+            finally:
+                db.close()
 
-        for payload in timeout_payloads + ack_payloads:
-            await manager.broadcast(payload)
+            for payload in timeout_payloads + ack_payloads:
+                await manager.broadcast(payload)
+    except asyncio.CancelledError:
+        logger.info(
+            "Sweeper loop cancelled",
+            extra={
+                "message_type": "shutdown",
+                "source": "sweeper",
+                "state": "cancelled",
+            },
+        )
+        raise
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if not logging_ready():
+        logger.info(
+            "Applying initial logging configuration",
+            extra={
+                "message_type": "startup",
+                "source": "server",
+                "state": "logging_bootstrap",
+            },
+        )
         configure_logging(
             log_dir=settings.log_dir,
             file_name=settings.log_file_name,
             max_mb=settings.log_max_mb_default,
             backup_count=settings.log_backup_count_default,
         )
-    logger.info("Server startup initiated", extra={"message_type": "startup", "source": "server"})
+    logger.info("Server startup initiated", extra={"message_type": "startup", "source": "server", "state": "begin"})
+    logger.info("Schema compatibility check started", extra={"message_type": "startup", "source": "server", "state": "schema_check"})
     ensure_schema_compat()
     _configure_runtime_logging()
-    logger.info("Schema compatibility check complete", extra={"message_type": "startup", "source": "server"})
+    logger.info("Schema compatibility check complete", extra={"message_type": "startup", "source": "server", "state": "schema_ready"})
+    logger.info("Starting sweeper task", extra={"message_type": "startup", "source": "server", "state": "starting_sweeper"})
     sweeper = asyncio.create_task(_sweeper_loop())
-    logger.info("Sweeper task started", extra={"message_type": "startup", "source": "server"})
+    logger.info("Sweeper task started", extra={"message_type": "startup", "source": "server", "state": "ready"})
     try:
         yield
     finally:
-        logger.info("Server shutdown initiated", extra={"message_type": "shutdown", "source": "server"})
+        logger.info("Server shutdown initiated", extra={"message_type": "shutdown", "source": "server", "state": "begin"})
+        logger.info("Cancelling sweeper task", extra={"message_type": "shutdown", "source": "server", "state": "stopping_sweeper"})
         sweeper.cancel()
         try:
             await sweeper
         except asyncio.CancelledError:
-            pass
-        logger.info("Server shutdown complete", extra={"message_type": "shutdown", "source": "server"})
+            logger.info(
+                "Sweeper task cancellation confirmed",
+                extra={
+                    "message_type": "shutdown",
+                    "source": "server",
+                    "state": "sweeper_stopped",
+                },
+            )
+        logger.info("Server shutdown complete", extra={"message_type": "shutdown", "source": "server", "state": "complete"})
 
 
 app = FastAPI(title="SherMon API", version="0.2.0", lifespan=lifespan)

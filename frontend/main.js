@@ -63,7 +63,7 @@ function ensureEntityAlertsModal() {
               </div>
               <p class="meta">All event types for this component, newest first.</p>
               <div class="log-box" role="region" aria-label="Last 24 hours events log">
-                <pre id="entityEventsLog" class="log-output">Loading events...</pre>
+                <div id="entityEventsLog" class="events-history-list">Loading events...</div>
               </div>
             </section>
           </div>
@@ -432,14 +432,25 @@ function renderStatusGrid() {
 function renderIncidentList() {
   const visible = state.incidents
     .filter((event) => !state.acks.has(event.event_id));
-  const rows = visible.slice(0, 150).map((event) => `
-    <li class="incident-item" data-event-id="${event.event_id}">
-      <strong>[${escapeHtml(event.severity)}]</strong> ${escapeHtml(event.store_id)}/${escapeHtml(event.component)} ${escapeHtml(event.event_type)}<br />
-      ${escapeHtml(event.message)}<br />
-      <small>${escapeHtml(new Date(event.happened_at).toLocaleString())} | ${escapeHtml(event.source)}</small><br />
-      <button class="ack-btn" data-ack-event="${event.event_id}">Acknowledge</button>
-    </li>
-  `);
+  const rows = visible.slice(0, 150).map((event) => {
+    const hasMeta = event.metadata && Object.keys(event.metadata).length > 0;
+    const metaSection = hasMeta
+      ? `<div class="metadata-expand">
+          <button class="metadata-toggle-btn" type="button" aria-expanded="false">Metadata</button>
+          <pre class="metadata-json" hidden>${escapeHtml(JSON.stringify(event.metadata, null, 2))}</pre>
+        </div>`
+      : "";
+
+    return `
+      <li class="incident-item" data-event-id="${event.event_id}">
+        <strong>[${escapeHtml(event.severity)}]</strong> ${escapeHtml(event.store_id)}/${escapeHtml(event.component)} ${escapeHtml(event.event_type)}<br />
+        ${escapeHtml(event.message)}<br />
+        <small>${escapeHtml(new Date(event.happened_at).toLocaleString())} | ${escapeHtml(event.source)}</small><br />
+        ${metaSection}
+        <button class="ack-btn" data-ack-event="${event.event_id}">Acknowledge</button>
+      </li>
+    `;
+  });
   incidentList.innerHTML = rows.join("");
 }
 
@@ -554,42 +565,62 @@ function generateOkEventId() {
   return `evt-ui-ok-${Date.now()}-${random}`;
 }
 
-function padOrTrim(value, width) {
-  const text = String(value ?? "");
-  if (text.length === width) return text;
-  if (text.length < width) return text.padEnd(width, " ");
-  return `${text.slice(0, Math.max(0, width - 1))}~`;
-}
-
 function formatLogTimestamp(value) {
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return "-";
-  const iso = dt.toISOString();
-  return iso.replace("T", " ").replace("Z", " UTC");
-}
-
-function formatEventLogLine(event) {
-  const timestamp = formatLogTimestamp(event.happened_at);
-  const severity = padOrTrim(String(event.severity || "").toUpperCase(), 8);
-  const message = String(event.message || "").replace(/\s+/g, " ").trim();
-  const eventType = padOrTrim(String(event.event_type || "").toUpperCase(), 7);
-  const source = padOrTrim(event.source || "-", 16);
-  const state = padOrTrim(event.active ? "ACTIVE" : "CLOSED", 6);
-  const eventId = padOrTrim(event.event_id || "-", 20);
-  const meta = event.metadata && Object.keys(event.metadata).length
-    ? JSON.stringify(event.metadata)
-    : "-";
-  return `${timestamp} | ${severity} | ${message} | ${eventType} | ${source} | ${state} | ${eventId} | ${meta}`;
+  const month = String(dt.getMonth() + 1).padStart(2, "0");
+  const day = String(dt.getDate()).padStart(2, "0");
+  const hours = String(dt.getHours()).padStart(2, "0");
+  const minutes = String(dt.getMinutes()).padStart(2, "0");
+  const seconds = String(dt.getSeconds()).padStart(2, "0");
+  return `${month}/${day} ${hours}:${minutes}:${seconds}`;
 }
 
 function renderEntityEventsLog(historyEvents) {
   if (!entityEventsLog) return;
-  const header = "TIMESTAMP                | SEVERITY | MESSAGE | TYPE    | SOURCE           | STATE  | EVENT_ID             | METADATA";
-  const divider = "-------------------------+----------+---------+---------+------------------+--------+----------------------+----------";
-  const lines = historyEvents.length
-    ? historyEvents.map((historyEvent) => formatEventLogLine(historyEvent))
-    : ["(no events for this component in the last 24 hours)"];
-  entityEventsLog.textContent = [header, divider, ...lines].join("\n");
+  if (!historyEvents.length) {
+    entityEventsLog.innerHTML = "<div class=\"meta\">(no events for this component in the last 24 hours)</div>";
+    return;
+  }
+
+  const rows = historyEvents.map((event) => {
+    const hasMeta = event.metadata && Object.keys(event.metadata).length > 0;
+    const metaSection = hasMeta
+      ? `<div class="metadata-expand">
+          <button class="metadata-toggle-btn" type="button" aria-expanded="false">Metadata</button>
+          <pre class="metadata-json" hidden>${escapeHtml(JSON.stringify(event.metadata, null, 2))}</pre>
+        </div>`
+      : "";
+
+    const severity = escapeHtml(String(event.severity || "-").toLowerCase());
+    const eventType = escapeHtml(String(event.event_type || "-").toUpperCase());
+    const stateLabel = event.active ? "active" : "closed";
+    const timestamp = escapeHtml(formatLogTimestamp(event.happened_at));
+    const source = escapeHtml(event.source || "-");
+    const eventId = escapeHtml(event.event_id || "-");
+    const message = escapeHtml(event.message || "");
+
+    return `
+      <article class="events-history-item severity-${severity}">
+        <div class="events-history-header">
+          <div class="events-history-badges">
+            <span class="events-history-chip severity severity-${severity}">${severity}</span>
+            <span class="events-history-chip type">${eventType}</span>
+            <span class="events-history-chip state">${stateLabel}</span>
+          </div>
+          <span class="events-history-time">${timestamp}</span>
+        </div>
+        <div class="events-history-message">${message}</div>
+        <div class="events-history-meta-row">
+          <span class="events-history-source">${source}</span>
+          <span class="events-history-event-id">${eventId}</span>
+        </div>
+        ${metaSection}
+      </article>
+    `;
+  });
+
+  entityEventsLog.innerHTML = rows.join("");
 }
 
 function currentEntityHistoryLimit() {
@@ -902,7 +933,11 @@ function wireAckActions() {
   };
 
   incidentList.addEventListener("click", onAckClick);
+  incidentList.addEventListener("click", onMetadataToggleClick);
   entityAlertsList.addEventListener("click", onMetadataToggleClick);
+  if (entityEventsLog) {
+    entityEventsLog.addEventListener("click", onMetadataToggleClick);
+  }
   entityAlertsList.addEventListener("click", onAckClick);
   entityAlertsList.addEventListener("click", onResolveClick);
 

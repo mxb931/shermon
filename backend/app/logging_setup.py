@@ -8,18 +8,52 @@ from pathlib import Path
 class ContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if not hasattr(record, "client_ip"):
-            record.client_ip = "-"
+            record.client_ip = None
         if not hasattr(record, "request_id"):
-            record.request_id = "-"
+            record.request_id = None
         if not hasattr(record, "message_type"):
-            record.message_type = "-"
+            record.message_type = None
         if not hasattr(record, "source"):
-            record.source = "-"
+            record.source = None
         if not hasattr(record, "state"):
-            record.state = "-"
+            record.state = None
         if not hasattr(record, "event_id"):
-            record.event_id = "-"
+            record.event_id = None
         return True
+
+
+class CompactKeyValueFormatter(logging.Formatter):
+    _FIELD_NAMES = ("client_ip", "request_id", "message_type", "source", "state", "event_id")
+
+    def format(self, record: logging.LogRecord) -> str:
+        record.message = record.getMessage()
+        if self.usesTime():
+            record.asctime = self.formatTime(record, self.datefmt)
+
+        parts = [
+            f"{record.asctime}",
+            f"level={record.levelname}",
+            f"logger={record.name}",
+        ]
+
+        for field in self._FIELD_NAMES:
+            value = getattr(record, field, None)
+            if value is None:
+                continue
+            text = str(value).strip()
+            if not text or text == "-" or text.lower() == "null":
+                continue
+            parts.append(f"{field}={text}")
+
+        parts.append(f"msg={record.message}")
+
+        rendered = " ".join(parts)
+        if record.exc_info:
+            if not record.exc_text:
+                record.exc_text = self.formatException(record.exc_info)
+            if record.exc_text:
+                rendered = f"{rendered}\n{record.exc_text}"
+        return rendered
 
 
 _LOGGING_READY = False
@@ -41,11 +75,7 @@ def configure_logging(log_dir: str, file_name: str, max_mb: int, backup_count: i
     for handler in list(root_logger.handlers):
         root_logger.removeHandler(handler)
 
-    formatter = logging.Formatter(
-        "%(asctime)s level=%(levelname)s logger=%(name)s client_ip=%(client_ip)s "
-        "request_id=%(request_id)s message_type=%(message_type)s source=%(source)s "
-        "state=%(state)s event_id=%(event_id)s msg=%(message)s"
-    )
+    formatter = CompactKeyValueFormatter()
     context_filter = ContextFilter()
 
     file_handler = RotatingFileHandler(log_path, maxBytes=max_bytes, backupCount=backups)

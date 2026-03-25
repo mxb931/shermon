@@ -42,20 +42,20 @@
         <h2>Logs</h2>
         <p class="meta">Filter by time, severity, message type, source, state, event id, IP, or free-text search.</p>
 
-        <form id="logsFilterForm" class="sender-form">
-          <div class="form-row">
+        <form id="logsFilterForm" class="sender-form logs-form-grid">
+          <div class="form-row logs-cell">
             <label for="logFile">Log File</label>
             <select id="logFile"></select>
           </div>
-          <div class="form-row">
+          <div class="form-row logs-cell">
             <label for="logsSince">From Date/Time</label>
             <input id="logsSince" type="datetime-local" />
           </div>
-          <div class="form-row">
+          <div class="form-row logs-cell">
             <label for="logsUntil">To Date/Time</label>
             <input id="logsUntil" type="datetime-local" />
           </div>
-          <div class="form-row">
+          <div class="form-row logs-cell">
             <label for="logsSeverity">Severity</label>
             <select id="logsSeverity">
               <option value="">Any</option>
@@ -66,34 +66,39 @@
               <option value="critical">critical</option>
             </select>
           </div>
-          <div class="form-row">
+          <div class="form-row logs-cell">
             <label for="logsMessageType">Message Type</label>
             <input id="logsMessageType" type="text" placeholder="client_event" />
           </div>
-          <div class="form-row">
+          <div class="form-row logs-cell">
             <label for="logsSource">Source</label>
             <input id="logsSource" type="text" placeholder="xstore-pos" />
           </div>
-          <div class="form-row">
+          <div class="form-row logs-cell">
             <label for="logsState">State</label>
             <input id="logsState" type="text" placeholder="purple" />
           </div>
-          <div class="form-row">
+          <div class="form-row logs-cell">
             <label for="logsEventId">Event ID</label>
             <input id="logsEventId" type="text" placeholder="evt-123" />
           </div>
-          <div class="form-row">
+          <div class="form-row logs-cell">
             <label for="logsClientIp">Client IP</label>
             <input id="logsClientIp" type="text" placeholder="127.0.0.1" />
           </div>
-          <div class="form-row">
+          <div class="form-row logs-cell logs-full-row">
             <label for="logsQuery">Free Text Search</label>
             <input id="logsQuery" type="text" placeholder="search across complete log line" />
           </div>
-          <div class="form-row">
+          <div class="form-row logs-cell">
             <label for="logsLimit">Rows Per Page</label>
             <input id="logsLimit" type="number" min="10" max="500" value="100" />
           </div>
+          <div class="form-row logs-cell">
+            <label for="logsLiveView">Live View</label>
+            <input id="logsLiveView" type="checkbox" />
+          </div>
+          <p class="meta logs-live-hint">When Live View is enabled, filters are refreshed every 2 seconds and results stay pinned to newest rows.</p>
           <div class="btn-row">
             <button type="submit">Apply Filters</button>
             <button type="button" id="logsResetBtn">Reset</button>
