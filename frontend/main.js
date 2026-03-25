@@ -645,6 +645,7 @@ async function openEntityAlertsModal(storeId, component) {
       } else {
         const rows = alerts.map((event) => {
           const severity = escapeHtml(event.severity);
+          const severityClass = `severity-${String(event.severity || "").toLowerCase()}`;
           const eventType = escapeHtml(event.event_type);
           const message = escapeHtml(truncateText(event.message, 90));
           const happenedAt = escapeHtml(new Date(event.happened_at).toLocaleString());
@@ -656,9 +657,9 @@ async function openEntityAlertsModal(storeId, component) {
             ? ""
             : `<button class=\"ack-btn\" data-ack-event=\"${eventId}\">Acknowledge</button>`;
           const resolving = state.pendingResolveEventIds.has(event.event_id);
-          const resolveButton = `<button class=\"resolve-btn\" data-resolve-event=\"${eventId}\" ${resolving ? "disabled" : ""}>${resolving ? "Resolving..." : "Resolved"}</button>`;
+          const resolveButton = `<button class=\"resolve-btn\" data-resolve-event=\"${eventId}\" ${resolving ? "disabled" : ""}>${resolving ? "Resolving..." : "Resolve"}</button>`;
           return `
-            <li class="incident-item">
+            <li class="incident-item ${severityClass}">
               <strong>[${severity}]</strong> ${eventType}${acked}<br />
               ${message}<br />
               <small>${happenedAt} | ${source} | ${eventIdCompact}</small><br />

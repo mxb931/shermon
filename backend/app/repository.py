@@ -168,11 +168,17 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
     status.last_checkin_at = happened_at_naive
     if event.stale_interval is not None:
         status.stale_interval_seconds = parse_stale_interval_seconds(event.stale_interval)
+    else:
+        status.stale_interval_seconds = None
 
     if canonical_event_type == "disable":
         status.disabled_at = happened_at_naive
     elif canonical_event_type == "enable":
         status.disabled_at = None
+
+    # Disabled components never participate in stale timeout logic.
+    if status.disabled_at is not None:
+        status.stale_interval_seconds = None
 
     if status.disabled_at is not None and canonical_event_type not in {"enable", "disable"}:
         incident.active = False

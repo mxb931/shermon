@@ -39,7 +39,7 @@ Accepts one event from Xstore.
 - `message`: operator-readable summary.
 - `source`: emitter name in Xstore.
 - `happened_at`: stamped automatically by the API at ingest time.
-- `stale_interval`: optional stale timeout duration using only `d`, `h`, and `m` units (for example `2d5h10m`, `4h`, `30m`). If omitted, timeout-to-purple is disabled.
+- `stale_interval`: optional stale timeout duration using only `d`, `h`, and `m` units (for example `2d5h10m`, `4h`, `30m`). When provided, it arms a one-shot timeout expectation for the current check-in. If omitted, any previously armed timeout expectation is cleared.
 - `metadata`: optional key-value context map.
 
 Green reset behavior:
@@ -58,6 +58,7 @@ Active alert rule:
 
 - Only `red`, `yellow`, or `purple` conditions are considered active alerts.
 - `green` and `white` are not active alerts.
+- While `white` (disabled), timeout-to-purple evaluation is suppressed and alerts remain stored for history but are ignored by active alert workflows until re-enabled.
 
 ### Response payload
 

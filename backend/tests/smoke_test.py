@@ -5,12 +5,13 @@ Server must be running on http://127.0.0.1:8000
 """
 
 import json
+import os
 import sys
 import time
 import urllib.request
 import urllib.error
 
-BASE = "http://127.0.0.1:8000"
+BASE = os.getenv("SMOKE_BASE", "http://127.0.0.1:8000")
 KEY = "dev-monitor-key"
 PASS = "\033[32mPASS\033[0m"
 FAIL = "\033[31mFAIL\033[0m"
@@ -228,6 +229,81 @@ status, body = request(
 check("ok signal accepted", body.get("accepted") is True, body)
 
 
+print("\n--- One-shot stale expectation and disabled override behavior ---")
+stale_seed = event(
+    f"evt-stale-seed-{RUN_ID}",
+    f"STALE_SEED_{RUN_ID}",
+    "store-330",
+    "daily-open",
+    "ok",
+    "info",
+    "Daily open check-in healthy",
+)
+stale_seed["stale_interval"] = "30m"
+status, body = request("POST", "/api/v1/events", stale_seed)
+check("stale expectation seed accepted", body.get("accepted") is True, body)
+
+stale_clear_event = event(
+    f"evt-stale-clear-{RUN_ID}",
+    f"STALE_CLEAR_{RUN_ID}",
+    "store-330",
+    "daily-open",
+    "problem",
+    "warning",
+    "Daily open finished late",
+)
+status, body = request("POST", "/api/v1/events", stale_clear_event)
+check("follow-up event without stale_interval accepted", body.get("accepted") is True, body)
+
+status, bootstrap_after_clear = request("GET", "/api/v1/bootstrap")
+store_330_after_clear = next(
+    (s for s in bootstrap_after_clear.get("statuses", []) if s["store_id"] == "store-330" and s["component"] == "daily-open"),
+    None,
+)
+check("post-clear entity present", store_330_after_clear is not None)
+check(
+    "stale expectation cleared when stale_interval omitted",
+    store_330_after_clear and store_330_after_clear.get("stale_interval_seconds") is None,
+    store_330_after_clear,
+)
+
+status, body = request(
+    "POST",
+    "/api/v1/events",
+    event(
+        f"evt-disabled-{RUN_ID}",
+        f"DISABLED_{RUN_ID}",
+        "store-330",
+        "daily-open",
+        "disable",
+        "info",
+        "Component disabled for maintenance",
+    ),
+)
+check("disable accepted", body.get("accepted") is True, body)
+
+status, body = request(
+    "POST",
+    "/api/v1/events",
+    event(
+        f"evt-disabled-problem-{RUN_ID}",
+        f"DISABLED_PROB_{RUN_ID}",
+        "store-330",
+        "daily-open",
+        "problem",
+        "critical",
+        "Problem emitted while disabled",
+    ),
+)
+check("problem while disabled accepted", body.get("accepted") is True, body)
+
+status, body = request("GET", "/api/v1/active-alerts?store_id=store-330&component=daily-open")
+check("disabled component has no operationally active alerts", status == 200 and isinstance(body, list) and len(body) == 0, body)
+
+status, body = request("GET", "/api/v1/entity-events?store_id=store-330&component=daily-open&hours=24")
+check("events while disabled are still logged", status == 200 and any(item.get("event_id") == f"evt-disabled-problem-{RUN_ID}" for item in body), body)
+
+
 print("\n--- Bootstrap endpoint ---")
 status, bootstrap_body = request("GET", "/api/v1/bootstrap")
 check("returns 200", status == 200)
@@ -279,6 +355,22 @@ check(
         for s in bootstrap_body.get("statuses", [])
     ),
     bootstrap_body.get("statuses", []),
+)
+
+store_330_daily = next(
+    (s for s in bootstrap_body.get("statuses", []) if s["store_id"] == "store-330" and s["component"] == "daily-open"),
+    None,
+)
+check("daily-open entity present", store_330_daily is not None)
+check(
+    "disabled override keeps component white",
+    store_330_daily and store_330_daily.get("status_color") == "white",
+    store_330_daily,
+)
+check(
+    "disabled component has zero active incidents",
+    store_330_daily and store_330_daily.get("active_incident_count") == 0,
+    store_330_daily,
 )
 
 store_205_loyalty = next(

@@ -537,6 +537,24 @@ section {
   box-sizing: border-box;
 }
 
+.active-alerts-static-list .incident-item.severity-critical {
+  background: #f5d7d7;
+  border-color: #d7abab;
+  color: #5d1515;
+}
+
+.active-alerts-static-list .incident-item.severity-warning {
+  background: #f8edcb;
+  border-color: #dbc892;
+  color: #5c4600;
+}
+
+.active-alerts-static-list .incident-item.severity-info {
+  background: #dcefdc;
+  border-color: #b7d4b8;
+  color: #16431f;
+}
+
 .active-alerts-static-list .incident-item:last-child {
   margin-bottom: 0;
 }
@@ -721,7 +739,7 @@ section {
 }
 
 .resolve-btn {
-  margin-left: 0;
+  margin-left: auto;
   border: 1px solid #2f6f4e;
   border-radius: 6px;
   padding: 0.25rem 0.45rem;

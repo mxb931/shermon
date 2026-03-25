@@ -238,7 +238,7 @@ All fields are required unless noted.
   - `warning` sets status color to `yellow`
 - `problem` does not accept `info` severity.
 - `ok` events set status color to `green`.
-- `disable` events set status to `white` and suppress timeout evaluation.
+- `disable` events set status to `white`, suppress timeout evaluation, and suppress active alert workflows while disabled.
 - `enable` events set status to `green` and resume timeout evaluation.
 - Severity matrix is enforced:
   - `problem`: `warning`, `critical`
@@ -248,7 +248,11 @@ All fields are required unless noted.
 - Invalid event_type/severity combinations return `422`.
 - Active alerts are only `red`, `yellow`, or `purple`; `green` and `white` are never active alerts.
 - If an incoming event resolves to `green` while the component is currently `red`, `yellow`, or `purple`, all active alerts for that component are cleared and status resets to `green`.
-- If `stale_interval` is set and green check-ins are missed, status transitions to `purple`.
+- If `stale_interval` is set, it arms a one-shot timeout expectation for that check-in.
+- If no later event is received before the timeout, status transitions to `purple`.
+- Any later event (`ok`, `problem`, `enable`, `disable`) replaces `purple` with the new event-derived status.
+- If `stale_interval` is omitted on an event, any previously armed timeout expectation is cleared for that component.
+- While disabled (`white`), events are still recorded for history, but active alert workflows remain suppressed until re-enabled.
 - Repeated active `problem` with same `store_id + component + dedup_key` is treated as deduplicated.
 - If you resend the exact same `event_id`, it is treated as idempotent replay.
 - Invalid `stale_interval` format returns `422`.
