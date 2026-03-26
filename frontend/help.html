@@ -41,7 +41,66 @@
       <section>
         <h2>Help</h2>
         <h3>Quick Start</h3>
-        <p>Use Alerts to navigate a hierarchy: Stores -> Components -> Active Alerts. Select a store to drill into its components, then select a component to review and acknowledge active alerts. Use Test Sender to generate valid test traffic.</p>
+        <p>SherMon is easiest to use as a short workflow: confirm the live connection, review the Alerts page, drill into the affected component, acknowledge if needed, and use the Admin tools when you need to send test traffic, adjust runtime settings, or inspect logs.</p>
+
+        <h3>1. Confirm the dashboard is live</h3>
+        <ul class="help-list">
+          <li>Check the connection badge in the upper-right corner of the header.</li>
+          <li><strong>connected</strong> means the page is receiving live websocket updates.</li>
+          <li><strong>reconnecting</strong> means the browser is trying to restore the live feed.</li>
+          <li><strong>stale</strong> means the page is not currently receiving live updates.</li>
+        </ul>
+
+        <h3>2. Use the Alerts page as the main operating view</h3>
+        <ul class="help-list">
+          <li>The summary chips at the top show how many components are currently OK, WARN, CRITICAL, STALE, or DISABLED.</li>
+          <li>The main grid starts at the store level. Select a store to switch the grid to that store's components.</li>
+          <li>Select a component to open its detail view, where you can review current active alerts and the last 24 hours of events for that component.</li>
+          <li>The Incident Stream on the right shows recent unacknowledged events in newest-first order.</li>
+        </ul>
+
+        <h3>3. Review and acknowledge alerts</h3>
+        <ul class="help-list">
+          <li>You can acknowledge an alert from the main Incident Stream or from a component's Active Alerts view.</li>
+          <li>An acknowledgement hides the alert from the main Incident Stream, but it does not delete the original event.</li>
+          <li>Use the Acknowledgements page to see all active acknowledgements, who created them, and when they expire.</li>
+          <li>From the Acknowledgements page, you can expire an acknowledgement immediately if you want the alert visible again.</li>
+        </ul>
+
+        <h3>4. Use Test Sender for safe validation</h3>
+        <ul class="help-list">
+          <li>Use <strong>Mode = Event</strong> to create test monitoring traffic.</li>
+          <li>Choose a store and component, then select the event type and a valid severity for that type.</li>
+          <li>Use <strong>stale_interval</strong> only when you want to test stale behavior. Leave it blank to avoid arming a stale timeout.</li>
+          <li>Use <strong>Mode = Acknowledgement</strong> to create a test acknowledgement for an existing event.</li>
+          <li>The result dialog shows both the payload that was sent and the API response returned by the backend.</li>
+        </ul>
+
+        <h3>5. Use Admin Config carefully</h3>
+        <ul class="help-list">
+          <li>Admin Config changes live runtime settings.</li>
+          <li><strong>Sweeper Interval</strong> changes how often stale timeouts and acknowledgement expiry checks run.</li>
+          <li><strong>Entity History Default Rows</strong> and <strong>Entity History Row Options</strong> change how much event history is shown in component detail views.</li>
+          <li><strong>Max Log File Size</strong> and <strong>Retained Log Files</strong> control backend log rotation behavior.</li>
+          <li>Use <strong>Reload</strong> to refresh current settings and <strong>Reset To Defaults</strong> only when you want to restore the standard values immediately.</li>
+        </ul>
+
+        <h3>6. Use the Logs page for troubleshooting</h3>
+        <ul class="help-list">
+          <li>The Logs page can filter by file, time range, severity, message type, source, state, event id, client IP, and free-text search.</li>
+          <li><strong>Live View</strong> refreshes the results every 2 seconds and keeps the results pinned to the newest rows.</li>
+          <li><strong>Prev</strong> and <strong>Next</strong> page through results when Live View is off.</li>
+          <li>If you need to inspect one specific event or client action, filtering by <strong>event_id</strong>, <strong>message_type</strong>, or <strong>client_ip</strong> is usually the fastest path.</li>
+        </ul>
+
+        <h3>7. A simple operator workflow</h3>
+        <ul class="help-list">
+          <li>Open Alerts and confirm the connection badge is connected.</li>
+          <li>Use summary chips or the store grid to find affected stores and components.</li>
+          <li>Open the component detail view to see active alerts and recent event history.</li>
+          <li>Acknowledge an alert if it is being worked and should drop out of the main Incident Stream.</li>
+          <li>Use Logs if you need backend detail, or Test Sender if you need to verify expected UI behavior with controlled input.</li>
+        </ul>
 
         <h3>Field Glossary</h3>
         <ul class="help-list">
