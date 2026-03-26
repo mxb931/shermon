@@ -304,12 +304,20 @@ function openSummaryStatusModal(statusColor) {
 }
 
 function buildStoreSummaries() {
+  const ackCountByStore = new Map();
+  for (const ack of state.acks.values()) {
+    const storeId = String(ack.store_id || "");
+    if (!storeId) continue;
+    ackCountByStore.set(storeId, (ackCountByStore.get(storeId) || 0) + 1);
+  }
+
   const grouped = new Map();
   for (const status of state.statuses.values()) {
     const summary = grouped.get(status.store_id) || {
       store_id: status.store_id,
       status_color: "white",
       active_incident_count: 0,
+      ack_count: 0,
       component_count: 0,
     };
 
@@ -319,6 +327,11 @@ function buildStoreSummaries() {
     summary.active_incident_count += status.active_incident_count;
     summary.component_count += 1;
     grouped.set(status.store_id, summary);
+  }
+
+  for (const summary of grouped.values()) {
+    const ackCount = ackCountByStore.get(summary.store_id) || 0;
+    summary.ack_count = ackCount;
   }
 
   return Array.from(grouped.values()).sort((a, b) => {
@@ -365,6 +378,9 @@ function renderStoreGrid() {
     const storeId = escapeHtml(store.store_id);
     const statusColor = escapeHtml(store.status_color);
     const label = escapeHtml(statusLabel(store.status_color));
+    const ackMetric = store.ack_count > 0
+      ? `<div class="metric"><span>Acks</span><strong>${store.ack_count}</strong></div>`
+      : "";
     return `
       <article
         class="tile status status-button ${statusColor} clickable"
@@ -381,6 +397,7 @@ function renderStoreGrid() {
         <div class="entity-metrics">
           <div class="metric"><span>Components</span><strong>${store.component_count}</strong></div>
           <div class="metric"><span>Active alerts</span><strong>${store.active_incident_count}</strong></div>
+          ${ackMetric}
         </div>
       </article>
     `;
