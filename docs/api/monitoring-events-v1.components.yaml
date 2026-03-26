@@ -1,0 +1,535 @@
+components:
+  securitySchemes:
+    MonitorKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Monitor-Key
+  parameters:
+    StoreIdQuery:
+      name: store_id
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+      description: Store identifier.
+    ComponentQuery:
+      name: component
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      description: Component identifier/name.
+  schemas:
+    ErrorDetailString:
+      type: object
+      additionalProperties: false
+      properties:
+        detail:
+          type: string
+      required:
+        - detail
+
+    ValidationErrorItem:
+      type: object
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+        loc:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: integer
+        msg:
+          type: string
+        input: {}
+
+    ValidationErrorResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationErrorItem'
+      required:
+        - detail
+
+    StatusColor:
+      type: string
+      enum:
+        - green
+        - yellow
+        - red
+        - purple
+        - white
+
+    EventType:
+      type: string
+      enum:
+        - problem
+        - ok
+        - disable
+        - enable
+      description: |
+        Accepted canonical event types.
+        Legacy value `recovery` is also accepted by ingest and normalized to `ok`.
+
+    Severity:
+      type: string
+      enum:
+        - info
+        - warning
+        - critical
+
+    EventIn:
+      type: object
+      additionalProperties: false
+      example:
+        event_id: evt-20260326-001
+        dedup_key: PAYMENT_GATEWAY_TIMEOUT
+        store_id: store-104
+        component: payments
+        event_type: problem
+        severity: critical
+        message: Gateway timeout after 2 retries.
+        source: xstore-pos
+        stale_interval: 2h
+        metadata:
+          terminal_id: lane-3
+          order_id: A12810
+      properties:
+        event_id:
+          type: string
+          minLength: 6
+          maxLength: 64
+        dedup_key:
+          type: string
+          minLength: 3
+          maxLength: 128
+        store_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        component:
+          type: string
+          minLength: 1
+          maxLength: 128
+        event_type:
+          $ref: '#/components/schemas/EventType'
+        severity:
+          $ref: '#/components/schemas/Severity'
+        message:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        source:
+          type: string
+          minLength: 1
+          maxLength: 128
+        stale_interval:
+          type:
+            - string
+            - "null"
+          minLength: 2
+          maxLength: 32
+          pattern: ^(?:\d+[dhm])+$
+          description: |
+            Optional stale timeout duration with only d/h/m segments, for example:
+            `2d5h10m`, `4h`, `30m`.
+            Segment values must be positive integers.
+            If omitted, previously armed timeout expectation is cleared.
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Optional key-value event context.
+      required:
+        - event_id
+        - dedup_key
+        - store_id
+        - component
+        - event_type
+        - severity
+        - message
+        - source
+      description: |
+        Ingest event payload.
+
+        Event type / severity rules:
+        - `problem`: severity must be `warning` or `critical`
+        - `ok`: severity must be `info`
+        - `enable`: severity must be `info`
+        - `disable`: severity must be `info`
+
+    EventAck:
+      type: object
+      additionalProperties: false
+      properties:
+        accepted:
+          type: boolean
+        deduplicated:
+          type: boolean
+        sequence:
+          type:
+            - integer
+            - "null"
+      required:
+        - accepted
+        - deduplicated
+
+    IncidentEventOut:
+      type: object
+      additionalProperties: false
+      properties:
+        event_id:
+          type: string
+        dedup_key:
+          type: string
+        store_id:
+          type: string
+        component:
+          type: string
+        event_type:
+          type: string
+        severity:
+          type: string
+        message:
+          type: string
+        source:
+          type: string
+        happened_at:
+          type: string
+          format: date-time
+          description: UTC timestamp stamped at ingest time.
+        active:
+          type: boolean
+        metadata:
+          type: object
+          additionalProperties: true
+      required:
+        - event_id
+        - dedup_key
+        - store_id
+        - component
+        - event_type
+        - severity
+        - message
+        - source
+        - happened_at
+        - active
+        - metadata
+
+    EntityStatusOut:
+      type: object
+      additionalProperties: false
+      properties:
+        store_id:
+          type: string
+        component:
+          type: string
+        status_color:
+          $ref: '#/components/schemas/StatusColor'
+        active_incident_count:
+          type: integer
+        last_message:
+          type: string
+        last_event_id:
+          type: string
+        last_changed_at:
+          type: string
+          format: date-time
+        stale_interval_seconds:
+          type:
+            - integer
+            - "null"
+        disabled:
+          type: boolean
+      required:
+        - store_id
+        - component
+        - status_color
+        - active_incident_count
+        - last_message
+        - last_event_id
+        - last_changed_at
+        - disabled
+
+    StoreStatusOut:
+      type: object
+      additionalProperties: false
+      properties:
+        store_id:
+          type: string
+        status_color:
+          $ref: '#/components/schemas/StatusColor'
+        component_count:
+          type: integer
+        active_incident_count:
+          type: integer
+      required:
+        - store_id
+        - status_color
+        - component_count
+        - active_incident_count
+
+    ComponentStatusOut:
+      allOf:
+        - $ref: '#/components/schemas/EntityStatusOut'
+
+    AckIn:
+      type: object
+      additionalProperties: false
+      example:
+        event_id: evt-20260326-001
+        ack_message: Investigating issue.
+        ack_by: operator-console
+        expires_at: '2026-03-26T17:30:00Z'
+      properties:
+        event_id:
+          type: string
+          minLength: 6
+          maxLength: 64
+        ack_message:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        ack_by:
+          type:
+            - string
+            - "null"
+          minLength: 1
+          maxLength: 128
+        expires_at:
+          type: string
+          format: date-time
+          description: Must be in the future.
+      required:
+        - event_id
+        - ack_message
+        - expires_at
+
+    AckOut:
+      type: object
+      additionalProperties: false
+      properties:
+        event_id:
+          type: string
+        store_id:
+          type: string
+        component:
+          type: string
+        ack_message:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        acknowledged_at:
+          type: string
+          format: date-time
+        ack_by:
+          type:
+            - string
+            - "null"
+      required:
+        - event_id
+        - store_id
+        - component
+        - ack_message
+        - expires_at
+        - acknowledged_at
+
+    RuntimeConfigOut:
+      type: object
+      additionalProperties: false
+      example:
+        sweeper_interval_seconds: 60
+        entity_history_default_limit: 1000
+        entity_history_limit_options:
+          - 250
+          - 500
+          - 1000
+          - 2000
+        log_max_mb: 50
+        log_backup_count: 20
+      properties:
+        sweeper_interval_seconds:
+          type: integer
+          minimum: 15
+          maximum: 3600
+        entity_history_default_limit:
+          type: integer
+          minimum: 50
+          maximum: 5000
+        entity_history_limit_options:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            minimum: 50
+            maximum: 5000
+          description: Must include `entity_history_default_limit`.
+        log_max_mb:
+          type: integer
+          minimum: 1
+          maximum: 1024
+        log_backup_count:
+          type: integer
+          minimum: 1
+          maximum: 200
+      required:
+        - sweeper_interval_seconds
+        - entity_history_default_limit
+        - entity_history_limit_options
+        - log_max_mb
+        - log_backup_count
+
+    LogFileOut:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        size_bytes:
+          type: integer
+        modified_at:
+          type: string
+          format: date-time
+        active:
+          type: boolean
+      required:
+        - name
+        - size_bytes
+        - modified_at
+        - active
+
+    LogEntryOut:
+      type: object
+      additionalProperties: false
+      properties:
+        timestamp:
+          type:
+            - string
+            - "null"
+          format: date-time
+        severity:
+          type:
+            - string
+            - "null"
+        message_type:
+          type:
+            - string
+            - "null"
+        source:
+          type:
+            - string
+            - "null"
+        state:
+          type:
+            - string
+            - "null"
+        event_id:
+          type:
+            - string
+            - "null"
+        client_ip:
+          type:
+            - string
+            - "null"
+        message:
+          type:
+            - string
+            - "null"
+        raw:
+          type: string
+      required:
+        - raw
+
+    LogQueryOut:
+      type: object
+      additionalProperties: false
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogEntryOut'
+      required:
+        - total
+        - limit
+        - offset
+        - items
+
+    BootstrapOut:
+      type: object
+      additionalProperties: false
+      properties:
+        latest_sequence:
+          type: integer
+        statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityStatusOut'
+        recent_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/IncidentEventOut'
+        active_acks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AckOut'
+        config:
+          oneOf:
+            - $ref: '#/components/schemas/RuntimeConfigOut'
+            - type: "null"
+      required:
+        - latest_sequence
+        - statuses
+        - recent_events
+        - active_acks
+
+    SummaryOut:
+      type: object
+      additionalProperties: false
+      properties:
+        counts:
+          type: object
+          additionalProperties: false
+          properties:
+            green:
+              type: integer
+            yellow:
+              type: integer
+            red:
+              type: integer
+            purple:
+              type: integer
+            white:
+              type: integer
+          required:
+            - green
+            - yellow
+            - red
+            - purple
+            - white
+      required:
+        - counts
+
+    AckExpiredOut:
+      type: object
+      additionalProperties: false
+      properties:
+        expired:
+          type: boolean
+      required:
+        - expired
+

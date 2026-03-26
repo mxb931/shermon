@@ -1,3 +1,5 @@
+import { ensureMonitorApiKey, getMissingMonitorApiKeyMessage } from "./monitor-auth.js";
+
 const pageUrl = new URL(window.location.href);
 const apiUrl = new URL(pageUrl.origin);
 apiUrl.protocol = pageUrl.protocol === "https:" ? "https:" : "http:";
@@ -442,6 +444,7 @@ function renderIncidentList() {
   const visible = state.incidents
     .filter((event) => !state.acks.has(event.event_id));
   const rows = visible.slice(0, 150).map((event) => {
+    const severityClass = `severity-${escapeHtml(event.severity)}`;
     const hasMeta = event.metadata && Object.keys(event.metadata).length > 0;
     const metaSection = hasMeta
       ? `<div class="metadata-expand">
@@ -451,7 +454,7 @@ function renderIncidentList() {
       : "";
 
     return `
-      <li class="incident-item" data-event-id="${event.event_id}">
+      <li class="incident-item ${severityClass}" data-event-id="${event.event_id}">
         <strong>[${escapeHtml(event.severity)}]</strong> ${escapeHtml(event.store_id)}/${escapeHtml(event.component)} ${escapeHtml(event.event_type)}<br />
         ${escapeHtml(event.message)}<br />
         <small>${escapeHtml(new Date(event.happened_at).toLocaleString())} | ${escapeHtml(event.source)}</small><br />
@@ -679,28 +682,38 @@ function openAckModal(eventId) {
 
 async function submitAckModal() {
   if (!state.pendingAckEventId) return;
-  const payload = {
-    event_id: state.pendingAckEventId,
-    ack_message: document.getElementById("ackModalMessage").value.trim(),
-    ack_by: "operator-console",
-    expires_at: toUtcIso(document.getElementById("ackModalExpires").value),
-  };
+  try {
+    const payload = {
+      event_id: state.pendingAckEventId,
+      ack_message: document.getElementById("ackModalMessage").value.trim(),
+      ack_by: "operator-console",
+      expires_at: toUtcIso(document.getElementById("ackModalExpires").value),
+    };
+    const apiKey = ensureMonitorApiKey({
+      message: getMissingMonitorApiKeyMessage("acknowledge alerts"),
+    });
 
-  const response = await fetch(`${API_BASE}/api/v1/acks`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Monitor-Key": "dev-monitor-key",
-    },
-    body: JSON.stringify(payload),
-  });
+    const response = await fetch(`${API_BASE}/api/v1/acks`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Monitor-Key": apiKey,
+      },
+      body: JSON.stringify(payload),
+    });
 
-  if (response.ok) {
+    if (!response.ok) {
+      const detail = (await response.text()).trim();
+      throw new Error(detail || `Failed to acknowledge alert (HTTP ${response.status}).`);
+    }
+
     const ack = await response.json();
     state.acks.set(ack.event_id, ack);
     renderAll();
+    ackModal.close();
+  } catch (error) {
+    window.alert(error?.message || String(error));
   }
-  ackModal.close();
 }
 
 async function openEntityAlertsModal(storeId, component) {
@@ -803,6 +816,9 @@ async function submitResolveEvent(eventId) {
   state.pendingResolveEventIds.add(eventId);
 
   try {
+    const apiKey = ensureMonitorApiKey({
+      message: getMissingMonitorApiKeyMessage("resolve alerts"),
+    });
     const payload = {
       event_id: generateOkEventId(),
       dedup_key: event.dedup_key,
@@ -822,16 +838,18 @@ async function submitResolveEvent(eventId) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Monitor-Key": "dev-monitor-key",
+        "X-Monitor-Key": apiKey,
       },
       body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to resolve alert ${eventId}`);
+      const detail = (await response.text()).trim();
+      throw new Error(detail || `Failed to resolve alert ${eventId} (HTTP ${response.status}).`);
     }
   } catch (error) {
     console.error(error);
+    window.alert(error?.message || String(error));
   } finally {
     state.pendingResolveEventIds.delete(eventId);
     await refreshEntityAlertsModalIfOpen();

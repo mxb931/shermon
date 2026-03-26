@@ -1,0 +1,534 @@
+openapi: 3.1.0
+info:
+  title: SherMon Monitoring Events API
+  version: "1.0.0"
+  description: |
+    OpenAPI specification for the SherMon Monitoring Events API v1.
+
+    Notes:
+    - The shared ingestion/authentication header is `X-Monitor-Key`.
+    - Some date-time values are stored and returned as UTC naive timestamps by the backend.
+    - Legacy producer value `event_type: recovery` is accepted at ingest and normalized to `ok`.
+servers:
+  - url: http://localhost:8000
+    description: Local API service
+  - url: /
+    description: Same-origin deployment
+
+tags:
+  - name: Health
+  - name: Events
+  - name: Acknowledgements
+  - name: Bootstrap
+  - name: Runtime Config
+  - name: Logs
+  - name: Summary
+  - name: Status Hierarchy
+  - name: Alerts
+
+components:
+  $ref: ./monitoring-events-v1.components.yaml#/components
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                required:
+                  - status
+
+  /api/v1/events:
+    post:
+      tags:
+        - Events
+      summary: Ingest one monitoring event
+      operationId: postEvent
+      security:
+        - MonitorKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventIn'
+            examples:
+              problemCritical:
+                summary: Critical problem event
+                value:
+                  event_id: evt-20260326-001
+                  dedup_key: PAYMENT_GATEWAY_TIMEOUT
+                  store_id: store-104
+                  component: payments
+                  event_type: problem
+                  severity: critical
+                  message: Gateway timeout after 2 retries.
+                  source: xstore-pos
+                  stale_interval: 2h
+                  metadata:
+                    terminal_id: lane-3
+                    order_id: A12810
+              okInfo:
+                summary: Recovery or healthy check-in
+                value:
+                  event_id: evt-20260326-002
+                  dedup_key: PAYMENT_GATEWAY_TIMEOUT
+                  store_id: store-104
+                  component: payments
+                  event_type: ok
+                  severity: info
+                  message: Gateway recovered and transactions are succeeding.
+                  source: xstore-pos
+                  metadata:
+                    terminal_id: lane-3
+              disableInfo:
+                summary: Disable monitoring for an entity
+                value:
+                  event_id: evt-20260326-003
+                  dedup_key: PAYMENTS_DISABLED_MAINTENANCE
+                  store_id: store-104
+                  component: payments
+                  event_type: disable
+                  severity: info
+                  message: Payments monitoring disabled during scheduled maintenance.
+                  source: operator-console
+                  metadata:
+                    change_ticket: CHG-4821
+              enableInfo:
+                summary: Re-enable monitoring for an entity
+                value:
+                  event_id: evt-20260326-004
+                  dedup_key: PAYMENTS_DISABLED_MAINTENANCE
+                  store_id: store-104
+                  component: payments
+                  event_type: enable
+                  severity: info
+                  message: Payments monitoring re-enabled after maintenance window.
+                  source: operator-console
+                  metadata:
+                    change_ticket: CHG-4821
+      responses:
+        '200':
+          description: Event accepted (possibly deduplicated).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventAck'
+        '401':
+          description: Invalid `X-Monitor-Key`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetailString'
+        '422':
+          description: Validation error (schema or event_type/severity rule mismatch).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  /api/v1/acks:
+    get:
+      tags:
+        - Acknowledgements
+      summary: List active acknowledgements
+      operationId: getAcks
+      responses:
+        '200':
+          description: Active acknowledgements.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AckOut'
+
+    post:
+      tags:
+        - Acknowledgements
+      summary: Create or update an acknowledgement for an event
+      operationId: postAck
+      security:
+        - MonitorKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AckIn'
+      responses:
+        '200':
+          description: Acknowledgement accepted/upserted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckOut'
+        '401':
+          description: Invalid `X-Monitor-Key`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetailString'
+        '404':
+          description: event_id not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetailString'
+        '422':
+          description: Validation error (for example expires_at is not in the future).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorDetailString'
+                  - $ref: '#/components/schemas/ValidationErrorResponse'
+
+  /api/v1/acks/{event_id}:
+    delete:
+      tags:
+        - Acknowledgements
+      summary: Expire acknowledgement immediately
+      operationId: deleteAck
+      security:
+        - MonitorKeyAuth: []
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Acknowledgement expired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckExpiredOut'
+        '401':
+          description: Invalid `X-Monitor-Key`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetailString'
+        '404':
+          description: Active acknowledgement not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetailString'
+
+  /api/v1/bootstrap:
+    get:
+      tags:
+        - Bootstrap
+      summary: Bootstrap payload for dashboards
+      operationId: getBootstrap
+      responses:
+        '200':
+          description: Latest sequence, statuses, recent events, active acknowledgements, config.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BootstrapOut'
+
+  /api/v1/config:
+    get:
+      tags:
+        - Runtime Config
+      summary: Get runtime configuration
+      operationId: getConfig
+      responses:
+        '200':
+          description: Runtime config values currently in effect.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeConfigOut'
+
+    put:
+      tags:
+        - Runtime Config
+      summary: Update runtime configuration
+      operationId: putConfig
+      security:
+        - MonitorKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeConfigOut'
+      responses:
+        '200':
+          description: Updated runtime configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeConfigOut'
+        '401':
+          description: Invalid `X-Monitor-Key`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetailString'
+        '422':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  /api/v1/log-files:
+    get:
+      tags:
+        - Logs
+      summary: List available log files
+      operationId: getLogFiles
+      responses:
+        '200':
+          description: Available log files in configured log directory.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogFileOut'
+
+  /api/v1/logs:
+    get:
+      tags:
+        - Logs
+      summary: Query parsed server logs with filters and pagination
+      operationId: getLogs
+      parameters:
+        - name: file_name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Log file name. Defaults to active log file.
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Include entries with timestamp >= since.
+        - name: until
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Include entries with timestamp <= until.
+        - name: severity
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Exact match (case-insensitive in backend by lowercasing).
+        - name: message_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: source
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Substring match, case-insensitive.
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Substring match, case-insensitive.
+        - name: event_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Substring match, case-insensitive.
+        - name: client_ip
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Substring match, case-insensitive.
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Free-text filter matched against raw log line.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 200
+            minimum: 1
+            maximum: 2000
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: Parsed log query result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogQueryOut'
+
+  /api/v1/summary:
+    get:
+      tags:
+        - Summary
+      summary: Get summary counts by status color
+      operationId: getSummary
+      responses:
+        '200':
+          description: Counts of entity statuses by color.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SummaryOut'
+
+  /api/v1/status/stores:
+    get:
+      tags:
+        - Status Hierarchy
+      summary: Get store-level status rollups
+      operationId: getStoreStatuses
+      responses:
+        '200':
+          description: One row per store with aggregated status and counts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StoreStatusOut'
+
+  /api/v1/status/stores/{store_id}/components:
+    get:
+      tags:
+        - Status Hierarchy
+      summary: Get component statuses for a store
+      operationId: getComponentStatusesForStore
+      parameters:
+        - name: store_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Component status rows for the store (possibly empty if store has no entities).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ComponentStatusOut'
+
+  /api/v1/active-alerts:
+    get:
+      tags:
+        - Alerts
+      summary: Get active alerts for an entity
+      operationId: getActiveAlertsForEntity
+      parameters:
+        - $ref: '#/components/parameters/StoreIdQuery'
+        - $ref: '#/components/parameters/ComponentQuery'
+      responses:
+        '200':
+          description: Active incident events for the entity, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IncidentEventOut'
+        '422':
+          description: Validation error for missing/invalid required query params.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  /api/v1/entity-events:
+    get:
+      tags:
+        - Events
+      summary: Get recent events for an entity
+      operationId: getRecentEventsByEntity
+      parameters:
+        - $ref: '#/components/parameters/StoreIdQuery'
+        - $ref: '#/components/parameters/ComponentQuery'
+        - name: hours
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 24
+            minimum: 1
+            maximum: 168
+          description: |
+            Requested lookback window in hours.
+            Backend clamps to [1, 168].
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1000
+            minimum: 50
+            maximum: 2000
+          description: |
+            Requested max events returned.
+            Backend clamps to [50, 2000].
+      responses:
+        '200':
+          description: Entity events, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IncidentEventOut'
+        '422':
+          description: Validation error for missing/invalid required query params.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+x-websocket:
+  /ws/updates:
+    description: |
+      WebSocket endpoint used for real-time updates. Not part of core OpenAPI HTTP path operations.
+
+      Message kinds:
+      - event_update: includes sequence, event, status, deduplicated
+      - ack_update: includes ack
+      - ack_expired: includes event_id
+      - status_timeout: includes status

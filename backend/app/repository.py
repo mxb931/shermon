@@ -11,7 +11,7 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import Acknowledgement, BroadcastEvent, EntityStatus, IncidentEvent, RuntimeConfig, StreamCursor
+from .models import Acknowledgement, BroadcastEvent, EntityStatus, IncidentEvent, RetiredComponent, RetiredStore, RuntimeConfig, StreamCursor
 from .schemas import (
     AckIn,
     AckOut,
@@ -20,6 +20,11 @@ from .schemas import (
     EntityStatusOut,
     EventIn,
     IncidentEventOut,
+    MaintenanceListOut,
+    RetiredComponentOut,
+    RetiredStoreOut,
+    RetireComponentIn,
+    RetireStoreIn,
     RuntimeConfigOut,
     RuntimeConfigUpdateIn,
     StoreStatusOut,
@@ -316,6 +321,125 @@ def _close_all_active_for_entity(db: Session, store_id: str, component: str) -> 
     return len(rows)
 
 
+def _retired_store_ids(db: Session) -> set[str]:
+    return set(db.scalars(select(RetiredStore.store_id)).all())
+
+
+def _retired_component_keys(db: Session) -> set[tuple[str, str]]:
+    rows = db.execute(select(RetiredComponent.store_id, RetiredComponent.component)).all()
+    return {(r.store_id, r.component) for r in rows}
+
+
+def _clear_retirement(db: Session, store_id: str, component: str) -> None:
+    """Remove any retirement records for this entity so it reappears after a new event."""
+    db.execute(
+        select(RetiredStore).where(RetiredStore.store_id == store_id)
+    )
+    store_row = db.scalar(select(RetiredStore).where(RetiredStore.store_id == store_id))
+    if store_row is not None:
+        db.delete(store_row)
+
+    comp_row = db.scalar(
+        select(RetiredComponent).where(
+            RetiredComponent.store_id == store_id,
+            RetiredComponent.component == component,
+        )
+    )
+    if comp_row is not None:
+        db.delete(comp_row)
+
+
+def retire_store(db: Session, store_id: str) -> RetiredStoreOut:
+    row = db.scalar(select(RetiredStore).where(RetiredStore.store_id == store_id))
+    if row is None:
+        row = RetiredStore(store_id=store_id, retired_at=_utc_now_naive())
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return RetiredStoreOut(store_id=row.store_id, retired_at=row.retired_at)
+
+
+def retire_component(db: Session, store_id: str, component: str) -> RetiredComponentOut:
+    row = db.scalar(
+        select(RetiredComponent).where(
+            RetiredComponent.store_id == store_id,
+            RetiredComponent.component == component,
+        )
+    )
+    if row is None:
+        row = RetiredComponent(store_id=store_id, component=component, retired_at=_utc_now_naive())
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return RetiredComponentOut(store_id=row.store_id, component=row.component, retired_at=row.retired_at)
+
+
+def retire_component_globally(db: Session, component: str) -> list[RetiredComponentOut]:
+    """Retire a component across every store that currently has it in EntityStatus."""
+    store_ids = sorted(db.scalars(
+        select(EntityStatus.store_id)
+        .where(EntityStatus.component == component)
+        .distinct()
+    ).all())
+
+    now = _utc_now_naive()
+    for store_id in store_ids:
+        existing = db.scalar(
+            select(RetiredComponent).where(
+                RetiredComponent.store_id == store_id,
+                RetiredComponent.component == component,
+            )
+        )
+        if existing is None:
+            db.add(RetiredComponent(store_id=store_id, component=component, retired_at=now))
+
+    db.commit()
+
+    rows = db.scalars(
+        select(RetiredComponent)
+        .where(RetiredComponent.component == component)
+        .order_by(RetiredComponent.store_id)
+    ).all()
+    return [RetiredComponentOut(store_id=r.store_id, component=r.component, retired_at=r.retired_at) for r in rows]
+
+
+def restore_store(db: Session, store_id: str) -> bool:
+    row = db.scalar(select(RetiredStore).where(RetiredStore.store_id == store_id))
+    if row is None:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
+
+
+def restore_component(db: Session, store_id: str, component: str) -> bool:
+    row = db.scalar(
+        select(RetiredComponent).where(
+            RetiredComponent.store_id == store_id,
+            RetiredComponent.component == component,
+        )
+    )
+    if row is None:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
+
+
+def get_maintenance_list(db: Session) -> MaintenanceListOut:
+    stores = db.scalars(select(RetiredStore).order_by(RetiredStore.store_id)).all()
+    components = db.scalars(
+        select(RetiredComponent).order_by(RetiredComponent.store_id, RetiredComponent.component)
+    ).all()
+    return MaintenanceListOut(
+        retired_stores=[RetiredStoreOut(store_id=r.store_id, retired_at=r.retired_at) for r in stores],
+        retired_components=[
+            RetiredComponentOut(store_id=r.store_id, component=r.component, retired_at=r.retired_at)
+            for r in components
+        ],
+    )
+
+
 def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int], dict]:
     canonical_event_type = _canonical_event_type(event.event_type)
     logger.info(
@@ -339,6 +463,9 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
             },
         )
         return True, True, None, {}
+
+    # Auto-restore retirement when a new (non-duplicate) event is received.
+    _clear_retirement(db, event.store_id, event.component)
 
     duplicate_problem = False
     if canonical_event_type == "problem":
@@ -481,6 +608,9 @@ def ingest_event(db: Session, event: EventIn) -> tuple[bool, bool, Optional[int]
 def bootstrap(db: Session, recent_limit: int) -> BootstrapOut:
     cursor = _cursor(db)
 
+    retired_stores = _retired_store_ids(db)
+    retired_components = _retired_component_keys(db)
+
     statuses = db.scalars(
         select(EntityStatus).order_by(EntityStatus.status_color.desc(), EntityStatus.store_id.asc(), EntityStatus.component.asc())
     ).all()
@@ -507,6 +637,7 @@ def bootstrap(db: Session, recent_limit: int) -> BootstrapOut:
                 disabled=s.disabled_at is not None,
             )
             for s in statuses
+            if s.store_id not in retired_stores and (s.store_id, s.component) not in retired_components
         ],
         recent_events=[
             IncidentEventOut(
@@ -607,9 +738,16 @@ def get_recent_events_for_entity(
 
 
 def get_store_statuses(db: Session) -> list[StoreStatusOut]:
+    retired_stores = _retired_store_ids(db)
+    retired_components = _retired_component_keys(db)
+
     rows = db.scalars(select(EntityStatus)).all()
     grouped: dict[str, list[EntityStatus]] = defaultdict(list)
     for row in rows:
+        if row.store_id in retired_stores:
+            continue
+        if (row.store_id, row.component) in retired_components:
+            continue
         grouped[row.store_id].append(row)
 
     stores: list[StoreStatusOut] = []
@@ -628,6 +766,9 @@ def get_store_statuses(db: Session) -> list[StoreStatusOut]:
 
 
 def get_component_statuses_for_store(db: Session, store_id: str) -> list[ComponentStatusOut]:
+    retired_stores = _retired_store_ids(db)
+    retired_components = _retired_component_keys(db)
+
     rows = db.scalars(
         select(EntityStatus)
         .where(EntityStatus.store_id == store_id)
@@ -647,6 +788,7 @@ def get_component_statuses_for_store(db: Session, store_id: str) -> list[Compone
             disabled=row.disabled_at is not None,
         )
         for row in rows
+        if row.store_id not in retired_stores and (row.store_id, row.component) not in retired_components
     ]
 
 

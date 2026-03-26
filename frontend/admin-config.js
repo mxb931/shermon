@@ -1,3 +1,5 @@
+import { bindApiKeyInput, ensureMonitorApiKey } from "./monitor-auth.js";
+
 const pageUrl = new URL(window.location.href);
 const apiUrl = new URL(pageUrl.origin);
 apiUrl.protocol = pageUrl.protocol === "https:" ? "https:" : "http:";
@@ -23,6 +25,10 @@ const logBackupCountInput = document.getElementById("logBackupCount");
 const reloadBtn = document.getElementById("adminConfigReloadBtn");
 const resetBtn = document.getElementById("adminConfigResetBtn");
 const result = document.getElementById("adminConfigResult");
+const apiKeyMessage = document.getElementById("adminApiKeyMessage");
+const missingApiKeyMessage = "Enter an API key to save config changes.";
+
+bindApiKeyInput(apiKeyInput, apiKeyMessage, missingApiKeyMessage);
 
 function showResult(label, payload) {
   result.textContent = `${label}\n${JSON.stringify(payload, null, 2)}`;
@@ -55,11 +61,16 @@ async function loadConfig() {
 }
 
 async function saveConfig(config) {
+  const apiKey = ensureMonitorApiKey({
+    inputEl: apiKeyInput,
+    messageEl: apiKeyMessage,
+    message: missingApiKeyMessage,
+  });
   const response = await fetch(`${API_BASE}/api/v1/config`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
-      "X-Monitor-Key": apiKeyInput.value,
+      "X-Monitor-Key": apiKey,
     },
     body: JSON.stringify(config),
   });

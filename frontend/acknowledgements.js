@@ -1,3 +1,5 @@
+import { ensureMonitorApiKey, getMissingMonitorApiKeyMessage } from "./monitor-auth.js";
+
 const pageUrl = new URL(window.location.href);
 const apiUrl = new URL(pageUrl.origin);
 apiUrl.protocol = pageUrl.protocol === "https:" ? "https:" : "http:";
@@ -97,12 +99,25 @@ function wireExpireButtons() {
     const eventId = target.getAttribute("data-expire-event");
     if (!eventId) return;
 
-    await fetch(`${API_BASE}/api/v1/acks/${eventId}`, {
-      method: "DELETE",
-      headers: { "X-Monitor-Key": "dev-monitor-key" },
-    });
-    state.acks.delete(eventId);
-    renderAckList();
+    try {
+      const apiKey = ensureMonitorApiKey({
+        message: getMissingMonitorApiKeyMessage("expire acknowledgements"),
+      });
+      const response = await fetch(`${API_BASE}/api/v1/acks/${eventId}`, {
+        method: "DELETE",
+        headers: { "X-Monitor-Key": apiKey },
+      });
+
+      if (!response.ok) {
+        const detail = (await response.text()).trim();
+        throw new Error(detail || `Failed to expire acknowledgement (HTTP ${response.status}).`);
+      }
+
+      state.acks.delete(eventId);
+      renderAckList();
+    } catch (error) {
+      window.alert(error?.message || String(error));
+    }
   });
 }
 

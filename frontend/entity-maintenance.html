@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SherMon - Entity Maintenance</title>
+    <link rel="stylesheet" href="./styles.css?v=20260325j" />
+  </head>
+  <body>
+    <header class="topbar">
+      <img src="./headerlogo.png" alt="Shermon-Williams Logo" />
+      <div id="connectionBadge" class="badge stale">disconnected</div>
+    </header>
+
+    <nav class="tabbar" aria-label="Main navigation">
+      <a class="tab" href="./index.html">Alerts</a>
+      <a class="tab" href="./all-stores.html">All Stores</a>
+      <a class="tab" href="./acknowledgements.html">Acks</a>
+      <div class="menu-group">
+        <button class="tab tab-button admin-toggle active" type="button" aria-expanded="false" aria-controls="adminSubmenu">Admin</button>
+        <div class="submenu" role="menu" aria-label="Admin links">
+          <a class="submenu-item" href="./test-sender.html">Test Sender</a>
+          <a class="submenu-item" href="./admin-config.html">Config</a>
+          <a class="submenu-item" href="./logs.html">Logs</a>
+          <a class="submenu-item" href="./entity-maintenance.html">Entity Maintenance</a>
+        </div>
+      </div>
+      <div class="menu-group">
+        <button class="tab tab-button help-toggle" type="button" aria-expanded="false" aria-controls="helpSubmenu">Help</button>
+        <div class="submenu" role="menu" aria-label="Documentation links">
+          <a class="submenu-item" href="./help.html">Help Overview</a>
+          <a class="submenu-item" href="./technical-functionality.html">Technical Functionality</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=technical-specification">Technical Specification</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=api-developer-usage">API Developer Usage</a>
+          <a class="submenu-item" href="./api-swagger.html">OpenAPI Swagger</a>
+          <a class="submenu-item" href="./doc-viewer.html?doc=readme">Project README</a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="layout single">
+      <section>
+        <h2>Entity Maintenance</h2>
+        <p class="meta">
+          Retire stores or components to hide them from monitoring views.
+          Retired entities reappear automatically when a new event is received.
+          Event history is always preserved.
+        </p>
+        <ul class="meta retire-rules">
+          <li><strong>Store ID only</strong> — hides all components for that store.</li>
+          <li><strong>Store ID + Component</strong> — hides that specific store/component pair.</li>
+          <li><strong>Component only</strong> — hides that component across every store that currently reports it.</li>
+        </ul>
+
+        <form id="maintenanceApiKeyForm" class="sender-form">
+          <div class="form-row">
+            <label for="maintenanceApiKey">Admin API Key</label>
+            <input id="maintenanceApiKey" type="password" autocomplete="off" />
+          </div>
+          <p id="maintenanceApiKeyMessage" class="field-message error" role="alert" hidden></p>
+        </form>
+
+        <h3>Retire</h3>
+        <form id="retireForm" class="sender-form">
+          <div class="form-row">
+            <label for="retireStoreId">Store ID <span class="field-optional">(optional)</span></label>
+            <input id="retireStoreId" type="text" placeholder="e.g. STORE-001" />
+          </div>
+          <div class="form-row">
+            <label for="retireComponent">Component <span class="field-optional">(optional)</span></label>
+            <input id="retireComponent" type="text" placeholder="e.g. POS" />
+          </div>
+          <p id="retireValidationMessage" class="field-message error" role="alert" hidden></p>
+          <div class="btn-row">
+            <button id="retireBtn" type="submit">Retire</button>
+          </div>
+        </form>
+
+        <pre id="maintenanceResult" class="log-output" hidden></pre>
+      </section>
+    </main>
+
+    <dialog id="retireConfirmDialog">
+      <form method="dialog" id="retireConfirmForm">
+        <h3 class="retire-confirm-heading">&#9888; Confirm Retirement</h3>
+        <p id="retireConfirmMessage" class="retire-confirm-message"></p>
+        <div class="form-row">
+          <label for="retireConfirmInput">Type <strong>I understand</strong> to confirm</label>
+          <input id="retireConfirmInput" type="text" autocomplete="off" spellcheck="false" />
+        </div>
+        <p id="retireConfirmError" class="field-message error" role="alert" hidden></p>
+        <div class="btn-row">
+          <button id="retireConfirmOkBtn" type="button">Confirm Retirement</button>
+          <button id="retireConfirmCancelBtn" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./page-status.js?v=20260326a" type="module"></script>
+    <script src="./help-menu.js?v=20260325a"></script>
+    <script src="./entity-maintenance.js?v=20260601a" type="module"></script>
+  </body>
+</html>

@@ -85,3 +85,21 @@ class RuntimeConfig(Base):
     entity_history_limit_options_json: Mapped[str] = mapped_column(Text, default="[250,500,1000,2000]")
     log_max_mb: Mapped[int] = mapped_column(Integer, default=50)
     log_backup_count: Mapped[int] = mapped_column(Integer, default=20)
+
+
+class RetiredStore(Base):
+    __tablename__ = "retired_store"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    retired_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class RetiredComponent(Base):
+    __tablename__ = "retired_component"
+    __table_args__ = (UniqueConstraint("store_id", "component", name="uq_retired_component"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    component: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    retired_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

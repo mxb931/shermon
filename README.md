@@ -26,6 +26,7 @@ Then open:
 
 - Dashboard: http://localhost:8080
 - API docs: http://localhost:8000/docs
+- OpenAPI Swagger UI (frontend): http://localhost:8080/api-swagger.html
 
 ## Send test event
 
@@ -68,6 +69,10 @@ What it does:
 
 - Developer usage guide: `docs/api/developer-usage.md`
 - Contract reference: `docs/api/monitoring-events-v1.md`
+- OpenAPI spec (canonical): `docs/api/monitoring-events-v1.openapi.yaml`
+- OpenAPI shared components: `docs/api/monitoring-events-v1.components.yaml`
+- Frontend docs sync script: `scripts/sync_openapi_docs.sh`
+- Generated TypeScript API types: `frontend/docs/api/generated/monitoring-events-v1.types.ts`
 
 ## Next implementation targets
 

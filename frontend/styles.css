@@ -32,7 +32,7 @@ body {
   align-items: center;
   padding: 0 2rem;
   border-bottom: 1px solid var(--border);
-  background: #185188;
+  background: #ADD8E6;
   min-height: 120px;
   position: relative;
 }
@@ -500,6 +500,29 @@ section {
   padding: 0.6rem;
   background: #fff;
   font-size: 0.88rem;
+}
+
+.incident-item.severity-critical {
+  background: #f5d7d7;
+  border-color: #d7abab;
+  color: #5d1515;
+}
+
+.incident-item.severity-warning {
+  background: #f8edcb;
+  border-color: #dbc892;
+  color: #5c4600;
+}
+
+.incident-item.severity-info {
+  background: #dcefdc;
+  border-color: #b7d4b8;
+  color: #16431f;
+}
+
+.incident-item small {
+  color: inherit;
+  opacity: 0.82;
 }
 
 .log-box {
@@ -1048,6 +1071,16 @@ section {
   transform: scale(1.15);
 }
 
+.field-message {
+  margin: -0.15rem 0 0.55rem 240px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.field-message.error {
+  color: var(--red);
+}
+
 .logs-form-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(180px, 1fr));
@@ -1354,6 +1387,10 @@ dialog form {
     grid-template-columns: 1fr;
   }
 
+  .field-message {
+    margin-left: 0;
+  }
+
   .menu-group {
     display: flex;
     flex-direction: column;
@@ -1369,4 +1406,79 @@ dialog form {
   .menu-group.open .submenu {
     display: flex;
   }
+}
+
+/* Entity Maintenance page */
+.retire-rules {
+  margin: 0.2rem 0 1rem 1.2rem;
+  padding: 0;
+}
+
+.retire-rules li {
+  margin: 0.25rem 0;
+}
+
+.field-optional {
+  font-weight: 400;
+  color: #888;
+  font-size: 0.88em;
+}
+
+.retire-confirm-heading {
+  margin: 0 0 0.5rem;
+  color: #b00;
+}
+
+.retire-confirm-message {
+  margin: 0 0 0.9rem;
+  line-height: 1.55;
+  color: #3a1100;
+  background: #fff4f0;
+  border: 1px solid #f5c0a0;
+  border-radius: 6px;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.92em;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.8rem 0 1.2rem;
+  font-size: 0.9em;
+}
+
+.data-table th,
+.data-table td {
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.data-table th {
+  background: #f6f8fa;
+  font-weight: 600;
+}
+
+.data-table tr:nth-child(even) td {
+  background: #f9f9f6;
+}
+
+.data-table .empty-row {
+  color: #888;
+  font-style: italic;
+}
+
+.action-btn {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.82em;
+  font-weight: 600;
+  cursor: pointer;
+  background: #fff;
+}
+
+.action-btn:hover {
+  background: #f0f0e8;
 }

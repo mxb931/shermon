@@ -1,9 +1,15 @@
+import { bindApiKeyInput, ensureMonitorApiKey } from "./monitor-auth.js";
+
 const pageUrl = new URL(window.location.href);
 const apiUrl = new URL(pageUrl.origin);
 apiUrl.protocol = pageUrl.protocol === "https:" ? "https:" : "http:";
 apiUrl.port = "8000";
 
 const API_BASE = window.MONITOR_API_BASE || apiUrl.origin;
+const apiKeyInput = document.getElementById("apiKeyInput");
+const apiKeyMessage = document.getElementById("apiKeyMessage");
+const missingApiKeyMessage = "Enter an API key to send authenticated requests.";
+bindApiKeyInput(apiKeyInput, apiKeyMessage, missingApiKeyMessage);
 
 const ALLOWED_SEVERITIES_BY_EVENT_TYPE = {
   problem: ["critical", "warning"],
@@ -243,12 +249,17 @@ async function sendEventFromForm() {
 
   const staleInterval = parseStaleIntervalText();
   if (staleInterval) payload.stale_interval = staleInterval;
+  const apiKey = ensureMonitorApiKey({
+    inputEl: apiKeyInput,
+    messageEl: apiKeyMessage,
+    message: missingApiKeyMessage,
+  });
 
   const response = await fetch(`${API_BASE}/api/v1/events`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Monitor-Key": document.getElementById("apiKeySelect").value,
+      "X-Monitor-Key": apiKey,
     },
     body: JSON.stringify(payload),
   });
@@ -267,12 +278,17 @@ async function sendAckFromForm() {
     ack_by: document.getElementById("ackBy").value,
     expires_at: expiresAt,
   };
+  const apiKey = ensureMonitorApiKey({
+    inputEl: apiKeyInput,
+    messageEl: apiKeyMessage,
+    message: missingApiKeyMessage,
+  });
 
   const response = await fetch(`${API_BASE}/api/v1/acks`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Monitor-Key": document.getElementById("apiKeySelect").value,
+      "X-Monitor-Key": apiKey,
     },
     body: JSON.stringify(payload),
   });
@@ -352,7 +368,7 @@ function wireSender() {
         await sendAckFromForm();
       }
     } catch (error) {
-      showSenderResult({}, String(error));
+      showSenderResult({}, error?.message || String(error));
     }
   });
 

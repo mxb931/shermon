@@ -215,3 +215,36 @@ class LogQueryOut(BaseModel):
     limit: int
     offset: int
     items: list[LogEntryOut]
+
+
+class RetiredStoreOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    store_id: str
+    retired_at: datetime
+
+
+class RetiredComponentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    store_id: str
+    component: str
+    retired_at: datetime
+
+
+class RetireStoreIn(BaseModel):
+    store_id: str
+
+
+class RetireComponentIn(BaseModel):
+    store_id: str
+    component: str
+
+
+class RetireComponentGlobalIn(BaseModel):
+    component: str
+
+
+class MaintenanceListOut(BaseModel):
+    retired_stores: list[RetiredStoreOut]
+    retired_components: list[RetiredComponentOut]

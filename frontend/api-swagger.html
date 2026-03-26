@@ -3,10 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SherMon - Acknowledgements</title>
+    <title>SherMon - OpenAPI Swagger</title>
     <link rel="stylesheet" href="./styles.css?v=20260323b" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+    <style>
+      body.swagger-page {
+        min-height: 100vh;
+      }
+
+      .swagger-wrap {
+        padding: 16px 20px 24px;
+      }
+
+      #swagger-ui {
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid #d8dde6;
+        background: #ffffff;
+      }
+    </style>
   </head>
-  <body>
+  <body class="swagger-page">
     <header class="topbar">
       <img src="./headerlogo.png" alt="Shermon-Williams Logo" />
       <div id="connectionBadge" class="badge stale">disconnected</div>
@@ -15,7 +32,7 @@
     <nav class="tabbar" aria-label="Main navigation">
       <a class="tab" href="./index.html">Alerts</a>
       <a class="tab" href="./all-stores.html">All Stores</a>
-      <a class="tab active" href="./acknowledgements.html">Acks</a>
+      <a class="tab" href="./acknowledgements.html">Acks</a>
       <div class="menu-group">
         <button class="tab tab-button admin-toggle" type="button" aria-expanded="false" aria-controls="adminSubmenu">Admin</button>
         <div class="submenu" role="menu" aria-label="Admin links">
@@ -38,14 +55,22 @@
       </div>
     </nav>
 
-    <main class="layout single">
-      <section>
-        <h2>Acknowledged Alerts</h2>
-        <ul id="ackList" class="incident-list"></ul>
-      </section>
+    <main class="swagger-wrap">
+      <div id="swagger-ui"></div>
     </main>
 
-    <script src="./acknowledgements.js?v=20260326a" type="module"></script>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+    <script>
+      window.ui = SwaggerUIBundle({
+        url: "./docs/api/monitoring-events-v1.swagger.yaml",
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: "BaseLayout",
+      });
+    </script>
+    <script src="./page-status.js?v=20260326a" type="module"></script>
     <script src="./help-menu.js?v=20260325a"></script>
   </body>
 </html>

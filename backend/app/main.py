@@ -22,6 +22,7 @@ from .repository import (
     bootstrap,
     create_ack,
     expire_ack,
+    get_maintenance_list,
     list_log_files,
     get_active_acks,
     get_component_statuses_for_store,
@@ -32,6 +33,11 @@ from .repository import (
     get_summary_counts,
     ingest_event,
     query_logs,
+    restore_component,
+    restore_store,
+    retire_component,
+    retire_component_globally,
+    retire_store,
     sweep_expired_acks,
     sweep_timeout_statuses,
     update_runtime_config,
@@ -46,6 +52,12 @@ from .schemas import (
     IncidentEventOut,
     LogFileOut,
     LogQueryOut,
+    MaintenanceListOut,
+    RetiredComponentOut,
+    RetiredStoreOut,
+    RetireComponentGlobalIn,
+    RetireComponentIn,
+    RetireStoreIn,
     RuntimeConfigOut,
     RuntimeConfigUpdateIn,
     StoreStatusOut,
@@ -630,6 +642,120 @@ def get_recent_events_by_entity(
     db: Session = Depends(get_db),
 ) -> list[IncidentEventOut]:
     return get_recent_events_for_entity(db, store_id, component, hours, limit)
+
+
+@app.get("/api/v1/maintenance/retired", response_model=MaintenanceListOut)
+def get_retired_entities(db: Session = Depends(get_db)) -> MaintenanceListOut:
+    return get_maintenance_list(db)
+
+
+@app.post("/api/v1/maintenance/retire-store", response_model=RetiredStoreOut)
+def post_retire_store(
+    request: Request,
+    body: RetireStoreIn,
+    _: None = Depends(require_ingest_key),
+    db: Session = Depends(get_db),
+) -> RetiredStoreOut:
+    result = retire_store(db, body.store_id)
+    logger.info(
+        "Store retired",
+        extra={
+            "client_ip": _client_ip_from_request(request),
+            "request_id": getattr(request.state, "request_id", "-"),
+            "message_type": "maintenance",
+            "source": body.store_id,
+            "state": "retired_store",
+        },
+    )
+    return result
+
+
+@app.post("/api/v1/maintenance/retire-component", response_model=RetiredComponentOut)
+def post_retire_component(
+    request: Request,
+    body: RetireComponentIn,
+    _: None = Depends(require_ingest_key),
+    db: Session = Depends(get_db),
+) -> RetiredComponentOut:
+    result = retire_component(db, body.store_id, body.component)
+    logger.info(
+        "Component retired",
+        extra={
+            "client_ip": _client_ip_from_request(request),
+            "request_id": getattr(request.state, "request_id", "-"),
+            "message_type": "maintenance",
+            "source": f"{body.store_id}/{body.component}",
+            "state": "retired_component",
+        },
+    )
+    return result
+
+
+@app.post("/api/v1/maintenance/retire-component-global", response_model=list[RetiredComponentOut])
+def post_retire_component_global(
+    request: Request,
+    body: RetireComponentGlobalIn,
+    _: None = Depends(require_ingest_key),
+    db: Session = Depends(get_db),
+) -> list[RetiredComponentOut]:
+    results = retire_component_globally(db, body.component)
+    logger.info(
+        "Component retired globally",
+        extra={
+            "client_ip": _client_ip_from_request(request),
+            "request_id": getattr(request.state, "request_id", "-"),
+            "message_type": "maintenance",
+            "source": body.component,
+            "state": "retired_component_global",
+        },
+    )
+    return results
+
+
+@app.post("/api/v1/maintenance/restore-store", response_model=dict)
+def post_restore_store(
+    request: Request,
+    body: RetireStoreIn,
+    _: None = Depends(require_ingest_key),
+    db: Session = Depends(get_db),
+) -> dict:
+    found = restore_store(db, body.store_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="store not found in retired list")
+    logger.info(
+        "Store restored",
+        extra={
+            "client_ip": _client_ip_from_request(request),
+            "request_id": getattr(request.state, "request_id", "-"),
+            "message_type": "maintenance",
+            "source": body.store_id,
+            "state": "restored_store",
+        },
+    )
+    return {"restored": True}
+
+
+@app.post("/api/v1/maintenance/restore-component", response_model=dict)
+def post_restore_component(
+    request: Request,
+    body: RetireComponentIn,
+    _: None = Depends(require_ingest_key),
+    db: Session = Depends(get_db),
+) -> dict:
+    found = restore_component(db, body.store_id, body.component)
+    if not found:
+        raise HTTPException(status_code=404, detail="component not found in retired list")
+    logger.info(
+        "Component restored",
+        extra={
+            "client_ip": _client_ip_from_request(request),
+            "request_id": getattr(request.state, "request_id", "-"),
+            "message_type": "maintenance",
+            "source": f"{body.store_id}/{body.component}",
+            "state": "restored_component",
+        },
+    )
+    return {"restored": True}
 
 
 @app.websocket("/ws/updates")
