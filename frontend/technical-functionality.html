@@ -8,7 +8,7 @@
   </head>
   <body>
     <header class="topbar">
-      <h1>SherMon</h1>
+      <img src="./headerlogo.png" alt="Shermon-Williams Logo" />
       <div id="connectionBadge" class="badge stale">disconnected</div>
     </header>
 
@@ -41,15 +41,29 @@
       <section>
         <h2>Technical Functionality</h2>
 
-        <h3>How The Stale Sweeper Works</h3>
-        <p>The stale monitor has two parts: event ingest arms or clears the timeout expectation, and a background sweeper periodically checks whether that expectation was missed.</p>
+        <nav class="doc-toc" aria-label="Technical functionality table of contents">
+          <h3>Table of Contents</h3>
+          <ul class="help-list">
+            <li><a href="#stale-sweeper">How The Stale Sweeper Works</a></li>
+            <li><a href="#event-ingest">Event Ingest And Status Projection</a></li>
+            <li><a href="#realtime-sync">Bootstrap And Realtime Synchronization</a></li>
+            <li><a href="#ack-flow">Acknowledgement Lifecycle</a></li>
+            <li><a href="#runtime-config">Runtime Configuration And Log Access</a></li>
+            <li><a href="#startup-schema">Startup, Schema Compatibility, And Migration Safety</a></li>
+            <li><a href="#frontend-rendering">Frontend Hierarchy And Rendering Flow</a></li>
+            <li><a href="#database-schema">Database Schema</a></li>
+          </ul>
+        </nav>
+
+        <h3 id="stale-sweeper">How The Stale Sweeper Works</h3>
+        <p>Stale monitoring is what turns a component purple when an expected check-in does not arrive on time. From an operator perspective, the important point is that stale behavior is controlled by incoming events and then enforced by a background check.</p>
 
         <h3>1. Event ingest arms or clears stale monitoring</h3>
         <ul class="help-list">
           <li>Every ingested event updates the entity status row for that store/component.</li>
           <li><strong>last_checkin_at</strong> is always set to the event time.</li>
-          <li>If the event includes <strong>stale_interval</strong>, SherMon parses it and stores it as <strong>stale_interval_seconds</strong>.</li>
-          <li>If the event omits <strong>stale_interval</strong>, SherMon explicitly clears the stale expectation by setting <strong>stale_interval_seconds</strong> to null.</li>
+          <li>If the event includes <strong>stale_interval</strong>, SherMon sets a timeout expectation for the next check-in.</li>
+          <li>If the event omits <strong>stale_interval</strong>, SherMon clears that timeout expectation.</li>
           <li>If the component is disabled, stale monitoring is also forced off.</li>
         </ul>
 
@@ -61,14 +75,14 @@
         </ul>
 
         <h3>2. What the sweeper checks</h3>
-        <p>A background sweeper scans entity status rows and only evaluates rows where all of these are true:</p>
+        <p>A background sweeper checks only rows where all of these are true:</p>
         <ul class="help-list">
           <li>The component is not disabled.</li>
           <li><strong>stale_interval_seconds</strong> is not null.</li>
           <li><strong>last_checkin_at</strong> is not null.</li>
         </ul>
 
-        <p>For each matching row, SherMon computes elapsed time as <strong>now - last_checkin_at</strong>.</p>
+        <p>For each matching row, SherMon compares the current time to the last check-in time.</p>
         <ul class="help-list">
           <li>If elapsed time is less than or equal to the stored stale interval, nothing happens.</li>
           <li>If the status is already purple, nothing happens.</li>
@@ -83,12 +97,12 @@
         </ul>
 
         <h3>3. When the sweeper runs</h3>
-        <p>The sweeper runs in the backend on a 60-second loop. It sleeps for 60 seconds, opens a database session, runs timeout checks and acknowledgement expiry checks, then broadcasts any resulting realtime updates.</p>
+        <p>The sweeper runs in the backend on a repeating interval. By default it checks once per minute, applies stale and acknowledgement expiry rules, then sends any updates to connected browsers.</p>
 
-        <p>That means a stale interval of <strong>1m</strong> is evaluated on the next sweeper pass after that minute has elapsed, not by a per-entity timer.</p>
+        <p>That means a stale interval of <strong>1m</strong> is evaluated on the next sweeper pass after that minute has elapsed, not by a dedicated timer for each component.</p>
 
         <h3>4. How the UI turns purple</h3>
-        <p>When the sweeper marks a component stale, it emits a websocket message of kind <strong>status_timeout</strong>. The frontend receives that payload, updates the in-memory status for that store/component, and re-renders the dashboard.</p>
+        <p>When the sweeper marks a component stale, connected dashboards receive the update and the component turns purple on screen without requiring a manual refresh.</p>
 
         <h3>5. What the sweeper does not do</h3>
         <ul class="help-list">
@@ -99,9 +113,253 @@
         </ul>
 
         <h3>6. Expected one-shot behavior</h3>
-        <p>If you send an event with <strong>stale_interval</strong>, wait until it turns purple, and then send a later event for the same store/component with no <strong>stale_interval</strong>, the next event should clear stale monitoring and return the component to normal event-driven behavior.</p>
+        <p>If you send an event with <strong>stale_interval</strong>, wait until it turns purple, and then send a later event for the same store/component with no <strong>stale_interval</strong>, that later event should clear stale monitoring and return the component to normal event-driven behavior.</p>
 
         <p>In other words: if <strong>stale_interval_seconds</strong> is null after the later event, the sweeper should skip that row and it should not turn purple again unless a future event re-arms stale monitoring.</p>
+
+        <h3 id="event-ingest">Event Ingest And Status Projection</h3>
+        <p>Every accepted event can affect what operators see on the dashboard. In practice, SherMon keeps both a running current status for each component and a separate event history for audit and troubleshooting.</p>
+
+        <h3>1. Input validation and normalization</h3>
+        <ul class="help-list">
+          <li>The API accepts four event types: <strong>problem</strong>, <strong>ok</strong>, <strong>disable</strong>, and <strong>enable</strong>.</li>
+          <li>Severity must match the event type so that invalid combinations are rejected early.</li>
+          <li>Older senders that still use <strong>recovery</strong> are treated the same as <strong>ok</strong>.</li>
+          <li><strong>stale_interval</strong> uses d/h/m duration segments such as <strong>2d5h10m</strong>.</li>
+        </ul>
+
+        <h3>2. Event idempotency and active-alert deduplication</h3>
+        <ul class="help-list">
+          <li>If an <strong>event_id</strong> already exists, SherMon treats it as the same event and does not create a duplicate record.</li>
+          <li>If a new <strong>problem</strong> arrives for the same store/component with the same <strong>dedup_key</strong> while that issue is already active, the extra report is kept in history but does not increase the active count again.</li>
+          <li>This helps keep the dashboard counts stable even when the same issue is reported more than once.</li>
+        </ul>
+
+        <h3>3. How status color is assigned</h3>
+        <ul class="help-list">
+          <li><strong>disable</strong> maps to white.</li>
+          <li><strong>enable</strong> and <strong>ok</strong> map to green.</li>
+          <li><strong>problem</strong> severity <strong>critical</strong> maps to red.</li>
+          <li><strong>problem</strong> severity <strong>warning</strong> maps to yellow.</li>
+        </ul>
+
+        <h3>4. When active incidents open or close</h3>
+        <ul class="help-list">
+          <li>Only red, yellow, and purple are treated as active alert colors.</li>
+          <li>A <strong>problem</strong> event opens an active incident only when it is not a duplicate of an already active issue.</li>
+          <li>An <strong>ok</strong> event closes matching active rows for the same entity and dedup key.</li>
+          <li>A <strong>disable</strong> event closes all active rows for the entity and resets active incident count to zero.</li>
+          <li>A green event received while the current status is red, yellow, or purple performs a full active-alert reset for that entity.</li>
+        </ul>
+
+        <h3>5. What is saved for each accepted event</h3>
+        <ul class="help-list">
+          <li>A historical event row is saved in <strong>incident_events</strong>.</li>
+          <li>The current component state is updated in <strong>entity_status</strong>.</li>
+          <li>The system sequence counter advances so realtime consumers can stay in order.</li>
+          <li>The outbound realtime payload is also saved so the stream has durable history.</li>
+        </ul>
+
+        <h3 id="realtime-sync">Bootstrap And Realtime Synchronization</h3>
+        <p>The dashboard is built to load quickly and then stay current. Operators first get a complete snapshot of the current state, then the browser listens for live changes.</p>
+
+        <h3>1. Bootstrap snapshot</h3>
+        <ul class="help-list">
+          <li><strong>/api/v1/bootstrap</strong> returns current statuses, recent events, active acknowledgements, and runtime settings.</li>
+          <li>The page uses that response to build the summary chips, store/component grid, and incident stream before live updates start arriving.</li>
+          <li>This is why a newly opened browser tab can show the current state immediately.</li>
+        </ul>
+
+        <h3>2. Websocket steady-state updates</h3>
+        <ul class="help-list">
+          <li>The browser connects to <strong>/ws/updates</strong> and keeps that connection alive with periodic pings.</li>
+          <li>The backend pushes event updates, stale changes, acknowledgement updates, and acknowledgement expiry messages.</li>
+          <li>The page updates only what changed, then redraws the affected views.</li>
+        </ul>
+
+        <h3>3. Connection handling</h3>
+        <ul class="help-list">
+          <li>The connection badge cycles through <strong>reconnecting</strong>, <strong>connected</strong>, and <strong>stale</strong>.</li>
+          <li>If the websocket closes, the browser backs off exponentially up to 15 seconds before retrying.</li>
+          <li>The server keeps track of active websocket clients and removes connections that can no longer receive updates.</li>
+        </ul>
+
+        <h3 id="ack-flow">Acknowledgement Lifecycle</h3>
+        <p>Acknowledgements help operators reduce noise while keeping the original event history intact. An ack changes how an alert is presented, not whether the event happened.</p>
+
+        <h3>1. Creating or updating an acknowledgement</h3>
+        <ul class="help-list">
+          <li>You can only acknowledge an event that already exists.</li>
+          <li>If the same event is acknowledged again, SherMon updates the existing acknowledgement instead of creating a second one.</li>
+          <li>The main incident stream hides events that currently have an active acknowledgement.</li>
+        </ul>
+
+        <h3>2. Expiry behavior</h3>
+        <ul class="help-list">
+          <li>Acknowledgements can expire manually or automatically.</li>
+          <li>When an acknowledgement expires, it becomes inactive and the browser is notified.</li>
+          <li>The original event remains in history and can become visible again once the acknowledgement is gone.</li>
+        </ul>
+
+        <h3>3. Why acknowledgements are handled separately</h3>
+        <ul class="help-list">
+          <li>Event history stays intact for audit and troubleshooting.</li>
+          <li>Acknowledgement timing can change without altering the original event.</li>
+          <li>The same event can move between visible and acknowledged states without being deleted.</li>
+        </ul>
+
+        <h3 id="runtime-config">Runtime Configuration And Log Access</h3>
+        <p>SherMon includes a small set of runtime controls so operators can tune monitoring behavior and review backend activity without editing code or restarting for every change.</p>
+
+        <h3>1. Runtime configuration model</h3>
+        <ul class="help-list">
+          <li><strong>sweeper_interval_seconds</strong> controls how often stale and ack expiry checks run.</li>
+          <li><strong>entity_history_default_limit</strong> and <strong>entity_history_limit_options</strong> control how many historical rows the component detail view offers by default.</li>
+          <li><strong>log_max_mb</strong> and <strong>log_backup_count</strong> control backend log rotation.</li>
+        </ul>
+
+        <h3>2. Runtime config application path</h3>
+        <ul class="help-list">
+          <li>The config is stored as a single shared runtime settings row.</li>
+          <li>When config is updated through the API, logging settings are reapplied immediately.</li>
+          <li>The sweeper reads the current interval on each cycle, so cadence changes take effect without restarting the service.</li>
+        </ul>
+
+        <h3>3. Log browser behavior</h3>
+        <ul class="help-list">
+          <li>The backend lists files in the configured log directory that match the active log file prefix.</li>
+          <li>Each log line is parsed into fields such as <strong>message_type</strong>, <strong>source</strong>, <strong>state</strong>, and <strong>event_id</strong>.</li>
+          <li>The UI can filter logs by time range, severity, source, event id, client IP, and free-text query.</li>
+        </ul>
+
+        <h3 id="startup-schema">Startup, Schema Compatibility, And Migration Safety</h3>
+        <p>SherMon performs startup checks to keep the database aligned with the application. This reduces upgrade friction and helps existing data remain usable as the application evolves.</p>
+
+        <h3>1. Table creation and compatibility checks</h3>
+        <ul class="help-list">
+          <li>Missing tables are created automatically.</li>
+          <li>Startup checks add newer columns when they are missing.</li>
+          <li>Compatibility helpers backfill newer fields from older data when possible.</li>
+        </ul>
+
+        <h3>2. Legacy cleanup behavior</h3>
+        <ul class="help-list">
+          <li>Legacy <strong>recovery</strong> events are rewritten to <strong>ok</strong> for consistency.</li>
+          <li>Older schema fields that are no longer used can be cleaned up during startup, with a safe fallback for SQLite environments that have limited schema-change support.</li>
+        </ul>
+
+        <h3>3. Why this matters operationally</h3>
+        <ul class="help-list">
+          <li>Upgrades are more forgiving in development and small deployments.</li>
+          <li>Existing data can be preserved while newer application behavior is adopted.</li>
+          <li>Startup becomes the main safeguard for keeping persistent data aligned with current expectations.</li>
+        </ul>
+
+        <h3 id="frontend-rendering">Frontend Hierarchy And Rendering Flow</h3>
+        <p>The Alerts page is designed to stay responsive by keeping current state in the browser and re-rendering from that local state as updates arrive.</p>
+
+        <h3>1. Store and component hierarchy</h3>
+        <ul class="help-list">
+          <li>The top-level grid groups components by store and shows each store using the highest-priority component color.</li>
+          <li>Selecting a store reuses the same grid area to show components for that store.</li>
+          <li>Summary chips use the same current-status data to open modal views for each color bucket.</li>
+        </ul>
+
+        <h3>2. Incident stream rendering</h3>
+        <ul class="help-list">
+          <li>The incident stream stays in newest-first order.</li>
+          <li>The list is capped so the page does not grow without limit over time.</li>
+          <li>Acknowledged events are hidden from the main stream, but remain available through entity-specific views and historical event queries.</li>
+        </ul>
+
+        <h3>3. Entity detail modal behavior</h3>
+        <ul class="help-list">
+          <li>Opening a component detail view shows both currently active alerts and the last 24 hours of event history.</li>
+          <li>The event history row limit follows runtime config.</li>
+          <li>Metadata is shown in expandable sections so operators can inspect detail only when needed.</li>
+        </ul>
+
+        <h3 id="database-schema">Database Schema</h3>
+        <p>The database is organized around four operator-facing needs: current status, historical events, acknowledgement state, and ordered realtime delivery.</p>
+
+        <pre class="schema-diagram" aria-label="ASCII database schema">+-------------------+
+| incident_events   |
+|-------------------|
+| id PK             |
+| event_id UQ       |
+| dedup_key         |
+| store_id          |
+| component         |
+| event_type        |
+| severity          |
+| message           |
+| source            |
+| metadata_json     |
+| happened_at       |
+| expires_at        |
+| created_at        |
+| active            |
++-------------------+
+         ^
+         | referenced by event_id
+         |
++-------------------+
+| acknowledgements  |
+|-------------------|
+| id PK             |
+| event_id UQ       |
+| store_id          |
+| component         |
+| ack_message       |
+| ack_by            |
+| expires_at        |
+| acknowledged_at   |
+| active            |
++-------------------+
+
++-------------------+
+| entity_status     |
+|-------------------|
+| id PK             |
+| store_id          |
+| component         |
+| status_color      |
+| active_incident_count |
+| last_message      |
+| last_event_id     |
+| last_changed_at   |
+| stale_interval_seconds |
+| last_checkin_at   |
+| disabled_at       |
+| UQ(store_id, component) |
++-------------------+
+
++-------------------+
+| broadcast_events  |
+|-------------------|
+| sequence PK       |
+| event_id UQ       |
+| payload_json      |
+| created_at        |
++-------------------+
+
++-------------------+
+| stream_cursor     |
+|-------------------|
+| id PK             |
+| latest_sequence   |
++-------------------+
+
++-------------------+
+| runtime_config    |
+|-------------------|
+| id PK             |
+| sweeper_interval_seconds |
+| entity_history_default_limit |
+| entity_history_limit_options_json |
+| log_max_mb        |
+| log_backup_count  |
++-------------------+</pre>
       </section>
     </main>
 
