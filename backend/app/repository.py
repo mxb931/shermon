@@ -719,7 +719,7 @@ def get_recent_events_for_entity(
         .limit(safe_limit)
     ).all()
 
-    return [
+    incident_out = [
         IncidentEventOut(
             event_id=row.event_id,
             dedup_key=row.dedup_key,
@@ -735,6 +735,63 @@ def get_recent_events_for_entity(
         )
         for row in rows
     ]
+
+    ack_rows = db.scalars(
+        select(Acknowledgement)
+        .where(
+            Acknowledgement.store_id == store_id,
+            Acknowledgement.component == component,
+            (Acknowledgement.acknowledged_at >= since) | (Acknowledgement.expired_at >= since),
+        )
+    ).all()
+
+    ack_out: list[IncidentEventOut] = []
+    for row in ack_rows:
+        ack_source = f"ack:{row.ack_by}" if row.ack_by else "ack:operator"
+
+        if row.acknowledged_at is not None and row.acknowledged_at >= since:
+            ack_out.append(
+                IncidentEventOut(
+                    event_id=f"ack-{row.event_id}-{row.acknowledged_at.isoformat()}",
+                    dedup_key=row.event_id,
+                    store_id=row.store_id,
+                    component=row.component,
+                    event_type="ack",
+                    severity="info",
+                    message=row.ack_message or "Acknowledged by operator",
+                    source=ack_source,
+                    happened_at=row.acknowledged_at,
+                    active=True,
+                    metadata={
+                        "acknowledged_event_id": row.event_id,
+                        "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+                    },
+                )
+            )
+
+        if row.expired_at is not None and row.expired_at >= since:
+            ack_out.append(
+                IncidentEventOut(
+                    event_id=f"ack-expired-{row.event_id}-{row.expired_at.isoformat()}",
+                    dedup_key=row.event_id,
+                    store_id=row.store_id,
+                    component=row.component,
+                    event_type="ack_expired",
+                    severity="info",
+                    message="Acknowledgement expired",
+                    source=ack_source,
+                    happened_at=row.expired_at,
+                    active=False,
+                    metadata={
+                        "acknowledged_event_id": row.event_id,
+                        "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+                    },
+                )
+            )
+
+    merged = incident_out + ack_out
+    merged.sort(key=lambda row: (row.happened_at, row.event_id), reverse=True)
+    return merged[:safe_limit]
 
 
 def get_store_statuses(db: Session) -> list[StoreStatusOut]:
@@ -823,6 +880,7 @@ def create_ack(db: Session, ack: AckIn) -> tuple[Optional[AckOut], dict]:
         row.ack_by = ack.ack_by
         row.expires_at = _to_utc_naive(ack.expires_at)
         row.acknowledged_at = _utc_now_naive()
+        row.expired_at = None
         row.active = True
 
     db.commit()
@@ -890,6 +948,7 @@ def expire_ack(db: Session, event_id: str) -> Optional[dict]:
         )
         return None
     row.active = False
+    row.expired_at = _utc_now_naive()
     db.commit()
     logger.info(
         "Acknowledgement expired",
@@ -913,6 +972,7 @@ def sweep_expired_acks(db: Session) -> list[dict]:
     payloads = []
     for row in rows:
         row.active = False
+        row.expired_at = now
         payloads.append({"kind": "ack_expired", "event_id": row.event_id})
 
     if payloads:

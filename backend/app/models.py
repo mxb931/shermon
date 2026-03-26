@@ -73,6 +73,7 @@ class Acknowledgement(Base):
     ack_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     acknowledged_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    expired_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
 

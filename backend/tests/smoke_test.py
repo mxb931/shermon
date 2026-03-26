@@ -477,6 +477,9 @@ status, body = request("POST", "/api/v1/acks", ack_payload(f"evt-T03-{RUN_ID}"))
 check("ack create returns 200", status == 200, body)
 check("ack create returns same event_id", body.get("event_id") == f"evt-T03-{RUN_ID}", body)
 
+status, body = request("GET", "/api/v1/entity-events?store_id=store-104&component=inventory&hours=24&limit=200")
+check("entity-events include ack timeline record", status == 200 and any(item.get("event_type") == "ack" and item.get("metadata", {}).get("acknowledged_event_id") == f"evt-T03-{RUN_ID}" for item in body), body)
+
 status, body = request("GET", "/api/v1/acks")
 check("ack list returns 200", status == 200, body)
 check("ack list contains new ack", any(a.get("event_id") == f"evt-T03-{RUN_ID}" for a in body), body)
@@ -484,6 +487,9 @@ check("ack list contains new ack", any(a.get("event_id") == f"evt-T03-{RUN_ID}" 
 status, body = request("DELETE", f"/api/v1/acks/evt-T03-{RUN_ID}")
 check("ack delete returns 200", status == 200, body)
 check("ack delete marks expired true", body.get("expired") is True, body)
+
+status, body = request("GET", "/api/v1/entity-events?store_id=store-104&component=inventory&hours=24&limit=200")
+check("entity-events include ack_expired timeline record", status == 200 and any(item.get("event_type") == "ack_expired" and item.get("metadata", {}).get("acknowledged_event_id") == f"evt-T03-{RUN_ID}" for item in body), body)
 
 
 print("\n--- Metadata round-trip ---")

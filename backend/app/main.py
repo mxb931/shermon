@@ -260,6 +260,7 @@ def ensure_schema_compat() -> None:
     Base.metadata.create_all(bind=engine)
     _drop_incident_category_if_present()
     _ensure_column("incident_events", "expires_at", "expires_at DATETIME")
+    _ensure_column("acknowledgements", "expired_at", "expired_at DATETIME")
     _ensure_column("entity_status", "expected_green_interval_seconds", "expected_green_interval_seconds INTEGER")
     _ensure_column("entity_status", "stale_interval_seconds", "stale_interval_seconds INTEGER")
     _ensure_column("entity_status", "last_checkin_at", "last_checkin_at DATETIME")

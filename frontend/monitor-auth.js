@@ -1,5 +1,5 @@
 const STORAGE_KEY = "monitor_api_key";
-const FALLBACK_KEY = window.MONITOR_API_KEY || "";
+const FALLBACK_KEY = window.MONITOR_API_KEY || "dev-monitor-key";
 
 function normalize(value) {
   return String(value || "").trim();
@@ -18,7 +18,7 @@ function setValidationState(inputEl, messageEl, message) {
 }
 
 export function getMissingMonitorApiKeyMessage(actionText = "complete this action") {
-  return `No API key is configured. Enter one in Admin Config or Test Sender before trying to ${actionText}.`;
+  return `No API key is configured for this deployment. Configure MONITOR_API_KEY before trying to ${actionText}.`;
 }
 
 export function getMonitorApiKey() {
