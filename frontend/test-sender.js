@@ -1,4 +1,9 @@
-const API_BASE = window.MONITOR_API_BASE || "http://localhost:8000";
+const pageUrl = new URL(window.location.href);
+const apiUrl = new URL(pageUrl.origin);
+apiUrl.protocol = pageUrl.protocol === "https:" ? "https:" : "http:";
+apiUrl.port = "8000";
+
+const API_BASE = window.MONITOR_API_BASE || apiUrl.origin;
 
 const ALLOWED_SEVERITIES_BY_EVENT_TYPE = {
   problem: ["critical", "warning"],

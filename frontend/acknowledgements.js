@@ -1,5 +1,14 @@
-const API_BASE = window.MONITOR_API_BASE || "http://localhost:8000";
-const WS_BASE = window.MONITOR_WS_BASE || "ws://localhost:8000/ws/updates";
+const pageUrl = new URL(window.location.href);
+const apiUrl = new URL(pageUrl.origin);
+apiUrl.protocol = pageUrl.protocol === "https:" ? "https:" : "http:";
+apiUrl.port = "8000";
+
+const wsUrl = new URL(apiUrl.origin);
+wsUrl.protocol = pageUrl.protocol === "https:" ? "wss:" : "ws:";
+wsUrl.pathname = "/ws/updates";
+
+const API_BASE = window.MONITOR_API_BASE || apiUrl.origin;
+const WS_BASE = window.MONITOR_WS_BASE || wsUrl.toString().replace(/\/$/, "");
 
 const ackList = document.getElementById("ackList");
 const connectionBadge = document.getElementById("connectionBadge");

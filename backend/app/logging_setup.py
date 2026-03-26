@@ -25,13 +25,15 @@ class ContextFilter(logging.Filter):
 class CompactKeyValueFormatter(logging.Formatter):
     _FIELD_NAMES = ("client_ip", "request_id", "message_type", "source", "state", "event_id")
 
+    def __init__(self, datefmt: str = "%Y-%m-%dT%H:%M:%S%z") -> None:
+        super().__init__(fmt="%(asctime)s", datefmt=datefmt)
+
     def format(self, record: logging.LogRecord) -> str:
         record.message = record.getMessage()
-        if self.usesTime():
-            record.asctime = self.formatTime(record, self.datefmt)
+        timestamp = self.formatTime(record, self.datefmt)
 
         parts = [
-            f"{record.asctime}",
+            f"{timestamp}",
             f"level={record.levelname}",
             f"logger={record.name}",
         ]
