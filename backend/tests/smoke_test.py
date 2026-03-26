@@ -491,6 +491,9 @@ check("ack delete marks expired true", body.get("expired") is True, body)
 status, body = request("GET", "/api/v1/entity-events?store_id=store-104&component=inventory&hours=24&limit=200")
 check("entity-events include ack_expired timeline record", status == 200 and any(item.get("event_type") == "ack_expired" and item.get("metadata", {}).get("acknowledged_event_id") == f"evt-T03-{RUN_ID}" for item in body), body)
 
+status, body = request("POST", "/api/v1/acks", ack_payload(f"evt-T04-{RUN_ID}"))
+check("ack create rejects ok/green event", status == 422, body)
+
 
 print("\n--- Metadata round-trip ---")
 meta_payload = {

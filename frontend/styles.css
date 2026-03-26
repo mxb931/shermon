@@ -502,6 +502,10 @@ section {
   font-size: 0.88rem;
 }
 
+.incident-item.stream-nav-card {
+  cursor: pointer;
+}
+
 .incident-item.severity-critical {
   background: #f5d7d7;
   border-color: #d7abab;
@@ -523,6 +527,19 @@ section {
 .incident-item small {
   color: inherit;
   opacity: 0.82;
+}
+
+.entity-disabled-indicator {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.42rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  vertical-align: text-top;
 }
 
 .log-box {
@@ -1164,6 +1181,50 @@ section {
   padding: 0.45rem 0.7rem;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* Push the toggle-disabled button to the far right inside btn-row */
+#entityAlertsForm .btn-row {
+  justify-content: flex-start;
+}
+
+#entityAlertsForm .btn-row #entityToggleDisabledBtn {
+  margin-left: auto;
+}
+
+.toggle-disabled-btn {
+  border-radius: 6px;
+  padding: 0.45rem 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.toggle-disabled-btn--disable {
+  background: #efefef;
+  border: 1px solid #b0b0b0;
+  color: #4e4e4e;
+}
+
+.toggle-disabled-btn--disable:hover {
+  background: #e0e0e0;
+  border-color: #888;
+}
+
+.toggle-disabled-btn--enable {
+  background: #dcefdc;
+  border: 1px solid #5a9a5a;
+  color: #1a421a;
+}
+
+.toggle-disabled-btn--enable:hover {
+  background: #c0e0c0;
+  border-color: #3a7a3a;
+}
+
+.toggle-disabled-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .code-box {

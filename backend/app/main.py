@@ -39,6 +39,7 @@ from .repository import (
     retire_component_globally,
     retire_store,
     sweep_expired_acks,
+    set_entity_disabled,
     sweep_timeout_statuses,
     update_runtime_config,
 )
@@ -47,6 +48,7 @@ from .schemas import (
     AckOut,
     BootstrapOut,
     ComponentStatusOut,
+    EntityDisabledPatchIn,
     EventAck,
     EventIn,
     IncidentEventOut,
@@ -495,6 +497,8 @@ async def post_ack(
 
     ack_out, payload = create_ack(db, ack)
     if ack_out is None:
+        if payload.get("error") == "not_ackable":
+            raise HTTPException(status_code=422, detail="only problem alerts can be acknowledged")
         raise HTTPException(status_code=404, detail="event_id not found")
     await manager.broadcast(payload)
     logger.info(
@@ -757,6 +761,28 @@ def post_restore_component(
         },
     )
     return {"restored": True}
+
+
+@app.patch("/api/v1/entity-status/disabled")
+async def patch_entity_disabled(
+    request: Request,
+    body: EntityDisabledPatchIn,
+    _: None = Depends(require_ingest_key),
+    db: Session = Depends(get_db),
+) -> dict:
+    status_dict = set_entity_disabled(db, body.store_id, body.component, body.disabled)
+    await manager.broadcast({"kind": "status_timeout", "status": status_dict})
+    logger.info(
+        "Entity disabled state changed",
+        extra={
+            "client_ip": _client_ip_from_request(request),
+            "request_id": getattr(request.state, "request_id", "-"),
+            "message_type": "maintenance",
+            "source": f"{body.store_id}/{body.component}",
+            "state": "disabled" if body.disabled else "enabled",
+        },
+    )
+    return status_dict
 
 
 @app.websocket("/ws/updates")

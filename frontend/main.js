@@ -80,6 +80,7 @@ function ensureEntityAlertsModal() {
           </div>
           <div class="btn-row">
             <button type="button" id="entityAlertsCloseBtn">Close</button>
+            <button type="button" id="entityToggleDisabledBtn" class="toggle-disabled-btn">Disable</button>
           </div>
         </form>
       </dialog>
@@ -171,6 +172,10 @@ function statusRank(statusColor) {
     white: 1,
   };
   return ranks[statusColor] || 0;
+}
+
+function canAcknowledgeEvent(event) {
+  return event?.event_type === "problem";
 }
 
 function compareStoreIdsByNumericSuffix(a, b) {
@@ -461,7 +466,15 @@ function renderIncidentList() {
   const visible = state.incidents
     .filter((event) => !state.acks.has(event.event_id));
   const rows = visible.slice(0, 150).map((event) => {
+    const statusKey = `${event.store_id}:${event.component}`;
+    const entityStatus = state.statuses.get(statusKey);
+    const disabledBadge = '<span class="entity-disabled-indicator">DISABLED</span>';
     const severityClass = `severity-${escapeHtml(event.severity)}`;
+    const ackButton = entityStatus?.disabled
+      ? disabledBadge
+      : (state.acks.has(event.event_id) || !canAcknowledgeEvent(event)
+        ? ""
+        : `<button class="ack-btn" data-ack-event="${event.event_id}">Acknowledge</button>`);
     const hasMeta = event.metadata && Object.keys(event.metadata).length > 0;
     const metaSection = hasMeta
       ? `<div class="metadata-expand">
@@ -471,12 +484,12 @@ function renderIncidentList() {
       : "";
 
     return `
-      <li class="incident-item ${severityClass}" data-event-id="${event.event_id}">
+      <li class="incident-item ${severityClass} stream-nav-card" data-event-id="${event.event_id}">
         <strong>[${escapeHtml(event.severity)}]</strong> ${escapeHtml(event.store_id)}/${escapeHtml(event.component)} ${escapeHtml(event.event_type)}<br />
         ${escapeHtml(event.message)}<br />
         <small>${escapeHtml(new Date(event.happened_at).toLocaleString())} | ${escapeHtml(event.source)}</small><br />
         ${metaSection}
-        <button class="ack-btn" data-ack-event="${event.event_id}">Acknowledge</button>
+        ${ackButton}
       </li>
     `;
   });
@@ -683,6 +696,10 @@ async function loadEntityEventsHistory(storeId, component) {
 
 function openAckModal(eventId) {
   const incident = state.incidents.find((item) => item.event_id === eventId);
+  if (!incident || !canAcknowledgeEvent(incident)) {
+    window.alert("Only problem alerts can be acknowledged.");
+    return;
+  }
   state.pendingAckEventId = eventId;
   const summary = incident
     ? `${incident.store_id}/${incident.component} ${incident.event_type} ${incident.severity}`
@@ -733,11 +750,55 @@ async function submitAckModal() {
   }
 }
 
+function updateToggleDisabledBtn(storeId, component) {
+  const btn = document.getElementById("entityToggleDisabledBtn");
+  if (!btn) return;
+  const statusKey = `${storeId}:${component}`;
+  const entityStatus = state.statuses.get(statusKey);
+  const isDisabled = entityStatus?.disabled ?? false;
+  btn.textContent = isDisabled ? "Enable" : "Disable";
+  btn.classList.toggle("toggle-disabled-btn--enable", isDisabled);
+  btn.classList.toggle("toggle-disabled-btn--disable", !isDisabled);
+}
+
+async function submitToggleDisabled() {
+  if (!state.entityAlertsContext) return;
+  const { storeId, component } = state.entityAlertsContext;
+  const statusKey = `${storeId}:${component}`;
+  const entityStatus = state.statuses.get(statusKey);
+  const newDisabled = !(entityStatus?.disabled ?? false);
+  const btn = document.getElementById("entityToggleDisabledBtn");
+  if (btn) btn.disabled = true;
+  try {
+    const apiKey = ensureMonitorApiKey({
+      message: getMissingMonitorApiKeyMessage("enable or disable components"),
+    });
+    const response = await fetch(`${API_BASE}/api/v1/entity-status/disabled`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Monitor-Key": apiKey },
+      body: JSON.stringify({ store_id: storeId, component, disabled: newDisabled }),
+    });
+    if (!response.ok) {
+      const detail = (await response.text()).trim();
+      throw new Error(detail || `Failed to update disabled state (HTTP ${response.status}).`);
+    }
+    const updated = await response.json();
+    state.statuses.set(statusKey, { ...entityStatus, ...updated });
+    updateToggleDisabledBtn(storeId, component);
+    renderAll();
+  } catch (error) {
+    window.alert(error?.message || String(error));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function openEntityAlertsModal(storeId, component) {
   if (!entityAlertsModal || !entityAlertsSummary || !entityAlertsList) return;
   state.entityAlertsContext = { storeId, component };
   state.entityAlertsByEventId.clear();
   entityAlertsSummary.textContent = `${storeId} / ${component}`;
+  updateToggleDisabledBtn(storeId, component);
   entityAlertsList.innerHTML = "<li class=\"incident-item\">Loading active alerts...</li>";
   if (entityEventsLog) {
     entityEventsLog.textContent = "Loading events...";
@@ -775,7 +836,7 @@ async function openEntityAlertsModal(storeId, component) {
           const eventId = escapeHtml(event.event_id);
           const eventIdCompact = escapeHtml(truncateMiddle(event.event_id, 10, 8));
           const acked = state.acks.has(event.event_id) ? " | acknowledged" : "";
-          const ackButton = state.acks.has(event.event_id)
+          const ackButton = state.acks.has(event.event_id) || !canAcknowledgeEvent(event)
             ? ""
             : `<button class=\"ack-btn\" data-ack-event=\"${eventId}\">Acknowledge</button>`;
           const resolving = state.pendingResolveEventIds.has(event.event_id);
@@ -913,6 +974,11 @@ function wireEntityStatusActions() {
     });
   }
 
+  const toggleDisabledBtn = document.getElementById("entityToggleDisabledBtn");
+  if (toggleDisabledBtn) {
+    toggleDisabledBtn.addEventListener("click", () => submitToggleDisabled());
+  }
+
   entityAlertsModal.addEventListener("close", () => {
     state.entityAlertsContext = null;
   });
@@ -944,6 +1010,32 @@ function wireEntityStatusActions() {
 
 function wireAckActions() {
   if (!entityAlertsList) return;
+  const onIncidentCardNavigate = (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    // Keep existing button and metadata interactions unchanged.
+    if (target.closest("button") || target.closest(".metadata-json")) return;
+
+    const incidentCard = target.closest(".stream-nav-card[data-event-id]");
+    if (!(incidentCard instanceof HTMLElement)) return;
+    const eventId = incidentCard.getAttribute("data-event-id");
+    if (!eventId) return;
+
+    const incident = state.incidents.find((item) => item.event_id === eventId);
+    if (!incident?.store_id || !incident?.component) return;
+
+    state.selectedStoreId = incident.store_id;
+    renderStatusGrid();
+
+    const selector = `.tile.status.clickable[data-store-id="${CSS.escape(incident.store_id)}"][data-component="${CSS.escape(incident.component)}"]`;
+    const componentTile = statusGrid.querySelector(selector);
+    if (componentTile instanceof HTMLElement) {
+      componentTile.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      componentTile.focus({ preventScroll: true });
+    }
+  };
+
   const onMetadataToggleClick = (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
@@ -976,6 +1068,7 @@ function wireAckActions() {
     await submitResolveEvent(eventId);
   };
 
+  incidentList.addEventListener("click", onIncidentCardNavigate);
   incidentList.addEventListener("click", onAckClick);
   incidentList.addEventListener("click", onMetadataToggleClick);
   entityAlertsList.addEventListener("click", onMetadataToggleClick);

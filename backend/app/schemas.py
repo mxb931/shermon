@@ -248,3 +248,9 @@ class RetireComponentGlobalIn(BaseModel):
 class MaintenanceListOut(BaseModel):
     retired_stores: list[RetiredStoreOut]
     retired_components: list[RetiredComponentOut]
+
+
+class EntityDisabledPatchIn(BaseModel):
+    store_id: str = Field(min_length=1, max_length=64)
+    component: str = Field(min_length=1, max_length=128)
+    disabled: bool

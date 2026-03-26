@@ -349,6 +349,35 @@ def _clear_retirement(db: Session, store_id: str, component: str) -> None:
         db.delete(comp_row)
 
 
+def set_entity_disabled(db: Session, store_id: str, component: str, disabled: bool) -> dict:
+    """Set or clear the disabled state for a specific store/component in EntityStatus."""
+    status = _entity_status(db, store_id, component)
+    now = _utc_now_naive()
+    if disabled:
+        status.disabled_at = now
+        status.status_color = "white"
+        status.stale_interval_seconds = None
+        _close_all_active_for_entity(db, status.store_id, status.component)
+        status.active_incident_count = 0
+        status.last_changed_at = now
+    else:
+        status.disabled_at = None
+        status.status_color = "green"
+        status.last_changed_at = now
+    db.commit()
+    return {
+        "store_id": status.store_id,
+        "component": status.component,
+        "status_color": status.status_color,
+        "active_incident_count": status.active_incident_count,
+        "last_message": status.last_message,
+        "last_event_id": status.last_event_id,
+        "last_changed_at": status.last_changed_at,
+        "stale_interval_seconds": status.stale_interval_seconds,
+        "disabled": status.disabled_at is not None,
+    }
+
+
 def retire_store(db: Session, store_id: str) -> RetiredStoreOut:
     row = db.scalar(select(RetiredStore).where(RetiredStore.store_id == store_id))
     if row is None:
@@ -861,6 +890,17 @@ def create_ack(db: Session, ack: AckIn) -> tuple[Optional[AckOut], dict]:
             },
         )
         return None, {}
+
+    if incident.event_type != "problem":
+        logger.warning(
+            "Ack requested for non-ackable event",
+            extra={
+                "message_type": "ack_update",
+                "event_id": ack.event_id,
+                "state": "not_ackable",
+            },
+        )
+        return None, {"error": "not_ackable"}
 
     row = db.scalar(select(Acknowledgement).where(Acknowledgement.event_id == ack.event_id))
     if row is None:
