@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SherMon - Logs</title>
-    <link rel="stylesheet" href="./styles.css?v=20260325k" />
+    <link rel="stylesheet" href="./styles.css?v=20260327b" />
   </head>
   <body>
     <header class="topbar">
@@ -69,15 +69,21 @@
           </div>
           <div class="form-row logs-cell">
             <label for="logsMessageType">Message Type</label>
-            <input id="logsMessageType" type="text" placeholder="client_event" />
+            <select id="logsMessageType">
+              <option value="">Any</option>
+            </select>
           </div>
           <div class="form-row logs-cell">
             <label for="logsSource">Source</label>
-            <input id="logsSource" type="text" placeholder="xstore-pos" />
+            <select id="logsSource">
+              <option value="">Any</option>
+            </select>
           </div>
           <div class="form-row logs-cell">
             <label for="logsState">State</label>
-            <input id="logsState" type="text" placeholder="purple" />
+            <select id="logsState">
+              <option value="">Any</option>
+            </select>
           </div>
           <div class="form-row logs-cell">
             <label for="logsEventId">Event ID</label>
@@ -95,11 +101,14 @@
             <label for="logsLimit">Rows Per Page</label>
             <input id="logsLimit" type="number" min="10" max="500" value="100" />
           </div>
-          <div class="form-row logs-cell">
-            <label for="logsLiveView">Live View</label>
-            <input id="logsLiveView" type="checkbox" />
+          <div class="form-row logs-cell logs-inline-checkbox">
+            <label for="logsLiveView" class="logs-inline-checkbox-label">
+              Live View
+              <input id="logsLiveView" type="checkbox" />
+            </label>
           </div>
           <p class="meta logs-live-hint">When Live View is enabled, filters are refreshed every 2 seconds and results stay pinned to newest rows.</p>
+          <p class="meta logs-live-hint">Message Type, Source, and State options are loaded from available logs and only include valid values.</p>
           <div class="btn-row">
             <button type="submit">Apply Filters</button>
             <button type="button" id="logsResetBtn">Reset</button>
@@ -115,6 +124,6 @@
 
     <script src="./page-status.js?v=20260326a" type="module"></script>
     <script src="./help-menu.js?v=20260325a"></script>
-    <script src="./logs.js?v=20260326a" type="module"></script>
+    <script src="./logs.js?v=20260327a" type="module"></script>
   </body>
 </html>

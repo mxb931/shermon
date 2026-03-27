@@ -217,6 +217,12 @@ class LogQueryOut(BaseModel):
     items: list[LogEntryOut]
 
 
+class LogFilterValuesOut(BaseModel):
+    message_types: list[str]
+    sources: list[str]
+    states: list[str]
+
+
 class RetiredStoreOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -32,6 +32,7 @@ from .repository import (
     get_store_statuses,
     get_summary_counts,
     ingest_event,
+    query_log_filter_values,
     query_logs,
     restore_component,
     restore_store,
@@ -52,6 +53,7 @@ from .schemas import (
     EventAck,
     EventIn,
     IncidentEventOut,
+    LogFilterValuesOut,
     LogFileOut,
     LogQueryOut,
     MaintenanceListOut,
@@ -610,6 +612,16 @@ def get_logs(
         offset=offset,
     )
     return LogQueryOut(**payload)
+
+
+@app.get("/api/v1/logs/filter-values", response_model=LogFilterValuesOut)
+def get_log_filter_values(values_limit: int = Query(default=500, ge=1, le=5000)) -> LogFilterValuesOut:
+    payload = query_log_filter_values(
+        log_dir=settings.log_dir,
+        active_file_name=settings.log_file_name,
+        values_limit=values_limit,
+    )
+    return LogFilterValuesOut(**payload)
 
 
 @app.get("/api/v1/summary")

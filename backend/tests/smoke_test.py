@@ -551,6 +551,19 @@ status, body = request("GET", "/api/v1/logs?limit=100&offset=0", key=None)
 check("logs returns 200 without auth", status == 200, body)
 check("logs response has items list", isinstance(body.get("items"), list), body)
 
+status, body = request("GET", "/api/v1/logs/filter-values", key=None)
+check("logs filter-values returns 200 without auth", status == 200, body)
+check("logs filter-values has message_types list", isinstance(body.get("message_types"), list), body)
+check("logs filter-values has sources list", isinstance(body.get("sources"), list), body)
+check("logs filter-values has states list", isinstance(body.get("states"), list), body)
+check(
+    "logs filter-values are deduplicated",
+    len(body.get("message_types", [])) == len(set(body.get("message_types", [])))
+    and len(body.get("sources", [])) == len(set(body.get("sources", [])))
+    and len(body.get("states", [])) == len(set(body.get("states", []))),
+    body,
+)
+
 status, body = request("GET", "/api/v1/logs?client_ip=127.0.0.1&limit=100&offset=0", key=None)
 check("logs IP filter returns 200", status == 200, body)
 check("logs IP filter contains only matching rows", all("127.0.0.1" in (item.get("client_ip") or "") for item in body.get("items", [])), body)

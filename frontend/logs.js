@@ -28,6 +28,8 @@ let offset = 0;
 let lastTotal = 0;
 let liveTimerId = null;
 const LIVE_REFRESH_MS = 2000;
+const FILTER_VALUES_REFRESH_MS = 30000;
+let lastFilterValuesRefreshAt = 0;
 
 function localIso(value) {
   if (!value) {
@@ -38,6 +40,27 @@ function localIso(value) {
     return "";
   }
   return dt.toISOString();
+}
+
+function setSelectOptions(selectEl, values) {
+  const previousValue = selectEl.value;
+  selectEl.innerHTML = "";
+
+  const anyOption = document.createElement("option");
+  anyOption.value = "";
+  anyOption.textContent = "Any";
+  selectEl.appendChild(anyOption);
+
+  for (const value of values) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    selectEl.appendChild(option);
+  }
+
+  if (previousValue && values.includes(previousValue)) {
+    selectEl.value = previousValue;
+  }
 }
 
 function buildQuery() {
@@ -83,9 +106,31 @@ function buildQuery() {
   return params;
 }
 
+function timestampFromRaw(rawLine) {
+  const text = String(rawLine || "");
+  const legacyMatch = text.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3,6})\b/);
+  if (legacyMatch) {
+    return legacyMatch[1];
+  }
+
+  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}))\b/);
+  if (isoMatch) {
+    return isoMatch[1];
+  }
+
+  return null;
+}
+
+function rowTimestamp(row) {
+  if (row.timestamp) {
+    return row.timestamp;
+  }
+  return timestampFromRaw(row.raw) || "-";
+}
+
 function renderRows(payload) {
   const lines = payload.items.map((row) => {
-    const ts = row.timestamp || "-";
+    const ts = rowTimestamp(row);
     const sev = row.severity || "-";
     const msgType = row.message_type || "-";
     const source = row.source || "-";
@@ -147,7 +192,22 @@ async function loadFiles() {
   }
 }
 
+async function loadFilterValues() {
+  const response = await fetch(`${API_BASE}/api/v1/logs/filter-values`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Could not load log filter values (HTTP ${response.status})`);
+  }
+  const payload = await response.json();
+  setSelectOptions(messageTypeInput, payload.message_types || []);
+  setSelectOptions(sourceInput, payload.sources || []);
+  setSelectOptions(stateInput, payload.states || []);
+  lastFilterValuesRefreshAt = Date.now();
+}
+
 async function loadLogs() {
+  if (Date.now() - lastFilterValuesRefreshAt >= FILTER_VALUES_REFRESH_MS) {
+    await loadFilterValues();
+  }
   const params = buildQuery();
   const response = await fetch(`${API_BASE}/api/v1/logs?${params.toString()}`, { cache: "no-store" });
   if (!response.ok) {
@@ -162,6 +222,7 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   offset = 0;
   try {
+    await loadFilterValues();
     await loadLogs();
   } catch (error) {
     output.textContent = String(error);
@@ -174,6 +235,7 @@ resetBtn.addEventListener("click", async () => {
   offset = 0;
   stopLiveView();
   try {
+    await loadFilterValues();
     await loadLogs();
   } catch (error) {
     output.textContent = String(error);
@@ -220,6 +282,7 @@ liveViewInput.addEventListener("change", async () => {
 (async () => {
   try {
     await loadFiles();
+    await loadFilterValues();
     await loadLogs();
     startLiveView();
   } catch (error) {

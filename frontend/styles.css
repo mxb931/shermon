@@ -1128,6 +1128,32 @@ section {
   width: 100%;
 }
 
+.logs-form-grid .logs-inline-checkbox {
+  flex-direction: row;
+  align-items: center;
+  align-self: end;
+  gap: 0.5rem;
+  min-height: 2.15rem;
+}
+
+.logs-form-grid .logs-inline-checkbox label {
+  margin: 0;
+}
+
+.logs-form-grid .logs-inline-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: auto;
+  cursor: pointer;
+}
+
+.logs-form-grid .logs-inline-checkbox input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  transform: scale(1.15);
+}
+
 .logs-form-grid .logs-full-row {
   grid-column: 1 / -1;
   width: 100%;

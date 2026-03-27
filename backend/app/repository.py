@@ -95,12 +95,20 @@ def _parse_log_line(line: str) -> dict:
     raw = line.rstrip("\n")
     fields = {match.group("key"): match.group("value") for match in _LOG_FIELD_RE.finditer(raw)}
     timestamp = None
-    if len(raw) >= 23:
-        maybe_ts = raw[:23]
-        try:
-            timestamp = datetime.strptime(maybe_ts, "%Y-%m-%d %H:%M:%S,%f")
-        except ValueError:
-            timestamp = None
+    ts_prefix = raw.split(" level=", 1)[0].strip()
+    if ts_prefix:
+        for pattern in (
+            "%Y-%m-%d %H:%M:%S,%f",
+            "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%dT%H:%M:%S.%f%z",
+            "%Y-%m-%dT%H:%M:%SZ",
+            "%Y-%m-%dT%H:%M:%S.%fZ",
+        ):
+            try:
+                timestamp = datetime.strptime(ts_prefix, pattern)
+                break
+            except ValueError:
+                continue
 
     message = None
     marker = " msg="
@@ -183,6 +191,59 @@ def query_logs(
         "limit": limit,
         "offset": offset,
         "items": sliced,
+    }
+
+
+def query_log_filter_values(log_dir: str, active_file_name: str, values_limit: int) -> dict:
+    root = Path(log_dir).resolve()
+    if not root.exists() or not root.is_dir():
+        return {"message_types": [], "sources": [], "states": []}
+
+    message_types: set[str] = set()
+    sources: set[str] = set()
+    states: set[str] = set()
+
+    for selected_path in _log_files(log_dir, active_file_name):
+        resolved_path = selected_path.resolve()
+        if root not in resolved_path.parents and resolved_path != root:
+            continue
+        if not resolved_path.exists() or not resolved_path.is_file():
+            continue
+
+        with resolved_path.open("r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                parsed = _parse_log_line(line)
+
+                message_type = (parsed.get("message_type") or "").strip()
+                source = (parsed.get("source") or "").strip()
+                state = (parsed.get("state") or "").strip()
+
+                if message_type and message_type != "-":
+                    message_types.add(message_type)
+                if source and source != "-":
+                    sources.add(source)
+                if state and state != "-":
+                    states.add(state)
+
+                # Stop scanning as soon as all sets reached requested limits.
+                if (
+                    len(message_types) >= values_limit
+                    and len(sources) >= values_limit
+                    and len(states) >= values_limit
+                ):
+                    break
+
+        if (
+            len(message_types) >= values_limit
+            and len(sources) >= values_limit
+            and len(states) >= values_limit
+        ):
+            break
+
+    return {
+        "message_types": sorted(message_types)[:values_limit],
+        "sources": sorted(sources)[:values_limit],
+        "states": sorted(states)[:values_limit],
     }
 
 
