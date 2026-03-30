@@ -1,11 +1,6 @@
 import { bindApiKeyInput, ensureMonitorApiKey } from "./monitor-auth.js";
 
-const pageUrl = new URL(window.location.href);
-const apiUrl = new URL(pageUrl.origin);
-apiUrl.protocol = pageUrl.protocol === "https:" ? "https:" : "http:";
-apiUrl.port = "8000";
-
-const API_BASE = window.MONITOR_API_BASE || apiUrl.origin;
+const API_BASE = window.MONITOR_API_BASE || window.location.origin;
 
 const apiKeyInput = document.getElementById("maintenanceApiKey");
 const apiKeyMessage = document.getElementById("maintenanceApiKeyMessage");

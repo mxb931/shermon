@@ -10,10 +10,10 @@ info:
     - Some date-time values are stored and returned as UTC naive timestamps by the backend.
     - Legacy producer value `event_type: recovery` is accepted at ingest and normalized to `ok`.
 servers:
-  - url: http://localhost:8000
-    description: Local API service
   - url: /
     description: Same-origin deployment
+  - url: http://localhost:8000
+    description: Local API service
 
 tags:
   - name: Health

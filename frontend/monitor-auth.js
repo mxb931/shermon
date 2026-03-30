@@ -1,5 +1,5 @@
 const STORAGE_KEY = "monitor_api_key";
-const FALLBACK_KEY = window.MONITOR_API_KEY || "dev-monitor-key";
+const FALLBACK_KEY = normalize(window.MONITOR_API_KEY);
 
 function normalize(value) {
   return String(value || "").trim();
@@ -26,9 +26,9 @@ export function getMonitorApiKey() {
     const stored = normalize(window.localStorage.getItem(STORAGE_KEY));
     if (stored) return stored;
   } catch {
-    // Ignore storage access errors and fall back to default.
+    // Ignore storage access errors and fall back to configured runtime value.
   }
-  return FALLBACK_KEY;
+  return FALLBACK_KEY || "";
 }
 
 export function setMonitorApiKey(value) {
@@ -42,7 +42,7 @@ export function setMonitorApiKey(value) {
   } catch {
     // Ignore storage write errors; normalized value is still returned.
   }
-  return normalized || FALLBACK_KEY;
+  return normalized;
 }
 
 export function ensureMonitorApiKey({ inputEl = null, messageEl = null, message = getMissingMonitorApiKeyMessage() } = {}) {

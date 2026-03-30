@@ -1,3 +1,4 @@
+# Local development only. Do not use this compose file as a production/Rancher deployment template.
 services:
   api:
     image: python:3.12-slim

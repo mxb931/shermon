@@ -1,13 +1,6 @@
-const pageUrl = new URL(window.location.href);
-const apiUrl = new URL(pageUrl.origin);
-apiUrl.protocol = pageUrl.protocol === "https:" ? "https:" : "http:";
-apiUrl.port = "8000";
-
-const wsUrl = new URL(apiUrl.origin);
-wsUrl.protocol = pageUrl.protocol === "https:" ? "wss:" : "ws:";
-wsUrl.pathname = "/ws/updates";
-
-const WS_BASE = window.MONITOR_WS_BASE || wsUrl.toString().replace(/\/$/, "");
+const defaultWsUrl = new URL("/ws/updates", window.location.origin);
+defaultWsUrl.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+const WS_BASE = window.MONITOR_WS_BASE || defaultWsUrl.toString().replace(/\/$/, "");
 
 const badge = document.getElementById("connectionBadge");
 

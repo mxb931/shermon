@@ -21,3 +21,6 @@ venv/
 !.vscode/settings.json
 !.vscode/extensions.json
 !.vscode/tasks.json
+
+# Secrets — never commit the live secret manifest
+deploy/rancher-secret.yaml

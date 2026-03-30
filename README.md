@@ -28,6 +28,86 @@ Then open:
 - API docs: http://localhost:8000/docs
 - OpenAPI Swagger UI (frontend): http://localhost:8080/api-swagger.html
 
+## Rancher deployment (SQLite-first)
+
+First release deployment uses a single image (frontend + backend on one origin),
+SQLite on a persistent volume, and one app replica.
+
+Required runtime env for deployment:
+
+- `MONITOR_API_KEY` (must be set; app returns 503 on auth endpoints if missing)
+- `MONITOR_DATABASE_URL=sqlite:////data/monitor/monitor.db`
+
+Recommended first-release constraints:
+
+- Run exactly one replica.
+- Mount persistent storage at `/data/monitor`.
+- Use Rancher/stdout logging for operations.
+
+Build image from repo root:
+
+```bash
+sh ./docker_build.sh
+```
+
+### Rancher apply/update runbook
+
+1. Edit deployment template:
+
+- Set image name in `deploy/rancher-sqlite-single-image.yaml` (`your-registry/xstore-monitor:latest`).
+- Set ingress host in `deploy/rancher-sqlite-single-image.yaml` (`xstore-monitor.example.com`).
+- Set `MONITOR_CORS_ALLOW_ORIGINS` to your deployed HTTPS origin.
+
+2. Edit the secret file (never commit this to git):
+
+- Copy it if needed: `cp deploy/rancher-secret.yaml.example deploy/rancher-secret.yaml`
+- Set `MONITOR_API_KEY` to a strong random value: `openssl rand -hex 32`
+- `deploy/rancher-secret.yaml` is in `.gitignore` — keep it that way.
+
+3. Sanity-check manifests before apply:
+
+```bash
+kubectl apply --dry-run=client -f deploy/rancher-secret.yaml
+kubectl apply --dry-run=client -f deploy/rancher-sqlite-single-image.yaml
+kubectl diff -f deploy/rancher-sqlite-single-image.yaml || true
+```
+
+Quick checklist:
+
+- `image:` points to your pushed tag.
+- ingress `host:` matches your DNS.
+- secret value is replaced and `rancher-secret.yaml` is not staged in git.
+- PVC storage size/class match your cluster policy.
+- replicas remain `1` for SQLite-first rollout.
+
+5. Build and push image (example):
+
+```bash
+IMAGE_NAME=xstore-monitor IMAGE_TAG=v1 REGISTRY_IMAGE=your-registry/xstore-monitor sh ./docker_build.sh
+```
+
+4. Apply first deployment (secret first, then main manifest):
+
+```bash
+kubectl apply -f deploy/rancher-secret.yaml
+kubectl apply -f deploy/rancher-sqlite-single-image.yaml
+kubectl -n xstore-monitor rollout status deploy/xstore-monitor
+```
+
+6. Update to a new image tag:
+
+```bash
+kubectl -n xstore-monitor set image deploy/xstore-monitor app=your-registry/xstore-monitor:v2
+kubectl -n xstore-monitor rollout status deploy/xstore-monitor
+```
+
+7. Check runtime state:
+
+```bash
+kubectl -n xstore-monitor get pods,svc,ingress,pvc
+kubectl -n xstore-monitor logs deploy/xstore-monitor --tail=200
+```
+
 ## Send test event
 
 ```bash

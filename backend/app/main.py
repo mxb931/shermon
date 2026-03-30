@@ -2,6 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
@@ -10,6 +11,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
@@ -368,7 +370,7 @@ app = FastAPI(title="SherMon API", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_allow_origins or ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -439,7 +441,23 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 def require_ingest_key(request: Request, x_monitor_key: str = Header(default="")) -> None:
-    if x_monitor_key != settings.api_key:
+    configured_key = (settings.api_key or "").strip()
+    provided_key = (x_monitor_key or "").strip()
+
+    if not configured_key:
+        logger.error(
+            "MONITOR_API_KEY is not configured",
+            extra={
+                "client_ip": _client_ip_from_request(request),
+                "request_id": getattr(request.state, "request_id", "-"),
+                "message_type": "auth_failure",
+                "source": "auth",
+                "state": "misconfigured",
+            },
+        )
+        raise HTTPException(status_code=503, detail="monitor API key is not configured")
+
+    if provided_key != configured_key:
         logger.warning(
             "Invalid API key",
             extra={
@@ -835,3 +853,9 @@ async def ws_updates(websocket: WebSocket):
             },
         )
         await manager.disconnect(websocket)
+
+
+# In single-image production, frontend files are copied to /app/frontend.
+frontend_dir = Path(__file__).resolve().parents[2] / "frontend"
+if frontend_dir.exists():
+    app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")

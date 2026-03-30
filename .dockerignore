@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv
+**/__pycache__
+**/*.pyc
+backend/.pytest_cache
+backend/.mypy_cache
+backend/.ruff_cache
+backend/logs
+backend/monitor.db
+*.db
+deploy
+node_modules
+.DS_Store
