@@ -1,0 +1,198 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: xstore-monitor
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: xstore-monitor-mysql-pvc
+  namespace: xstore-monitor
+spec:
+  volumeMode: Filesystem
+  # Match pollinghandler-db style; tune this for your cluster if needed.
+  storageClassName: longhorn
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: xstore-monitor-db
+  namespace: xstore-monitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: xstore-monitor-db
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: xstore-monitor-db
+        app.kubernetes.io/name: xstore-monitor-db
+        app.kubernetes.io/instance: xstore-monitor-db
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: xstore-monitor-secrets
+                  key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: xstore-monitor-secrets
+                  key: MYSQL_DATABASE
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: xstore-monitor-secrets
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: xstore-monitor-secrets
+                  key: MYSQL_PASSWORD
+          ports:
+            - containerPort: 3306
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /var/lib/mysql
+              name: mysql-data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 500Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: mysql-data
+          persistentVolumeClaim:
+            claimName: xstore-monitor-mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: xstore-monitor-db
+  namespace: xstore-monitor
+spec:
+  selector:
+    app: xstore-monitor-db
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: xstore-monitor
+  namespace: xstore-monitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: xstore-monitor
+  template:
+    metadata:
+      labels:
+        app: xstore-monitor
+    spec:
+      # Optional: uncomment if your registry requires credentials.
+      # imagePullSecrets:
+      #   - name: your-registry-pull-secret
+      containers:
+        - name: app
+          image: docker.artifactory.sherwin.com/tag-pos/xstore-monitor:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MONITOR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: xstore-monitor-secrets
+                  key: MONITOR_API_KEY
+            - name: MONITOR_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: xstore-monitor-secrets
+                  key: MONITOR_DATABASE_URL
+            - name: MONITOR_LOG_DIR
+              value: /tmp/shermon/logs
+            - name: MONITOR_CORS_ALLOW_ORIGINS
+              value: https://xstore-monitor.example.com
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: xstore-monitor
+  namespace: xstore-monitor
+spec:
+  selector:
+    app: xstore-monitor
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: xstore-monitor
+  namespace: xstore-monitor
+  annotations:
+    # Keep websocket connections stable.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  # Optional: uncomment once TLS secret exists.
+  # tls:
+  #   - hosts:
+  #       - xstore-monitor.example.com
+  #     secretName: xstore-monitor-tls
+  rules:
+    - host: xstore-monitor.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: xstore-monitor
+                port:
+                  number: 80

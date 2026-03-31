@@ -5,7 +5,7 @@ Real-time monitoring service for Xstore incidents.
 ## What is implemented
 
 - FastAPI backend with authenticated ingest endpoint.
-- SQLite persistence for incident history and current status.
+- SQLAlchemy persistence for incident history and current status.
 - Status projection to green/yellow/red/purple/white.
 - WebSocket updates for live dashboard refresh.
 - Dashboard tabs for Alerts, Acknowledgements, Test Sender, and Help.
@@ -60,7 +60,7 @@ What it does:
 
 - Ensures a virtual environment exists.
 - Starts the API on `127.0.0.1:8000`.
-- Uses an isolated temporary SQLite database for the run.
+- Uses an isolated temporary SQLite database for the run (local test only; Rancher deploy targets MySQL).
 - Runs `tests/smoke_test.py` and prints pass/fail results.
 - Stops the API automatically.
 
