@@ -1,6 +1,6 @@
 # SherMon (MVP)
 
-Real-time monitoring service for Xstore incidents.
+Real-time monitoring service for SherMon incidents.
 
 ## What is implemented
 
@@ -22,6 +22,12 @@ From `deploy` directory:
 docker compose up
 ```
 
+This starts three services:
+
+- `mysql` (persistent local MySQL)
+- `api` (FastAPI on MySQL)
+- `dashboard` (frontend)
+
 Then open:
 
 - Dashboard: http://localhost:8080
@@ -42,7 +48,7 @@ curl -X POST "http://localhost:8000/api/v1/events" \
     "event_type": "problem",
     "severity": "critical",
     "message": "Gateway timeout after 2 retries",
-    "source": "xstore-pos",
+    "source": "test-sender",
     "happened_at": "2026-03-20T15:11:00Z",
     "metadata": {"terminal_id": "lane-3"}
   }'
@@ -63,6 +69,35 @@ What it does:
 - Uses an isolated temporary SQLite database for the run (local test only; Rancher deploy targets MySQL).
 - Runs `tests/smoke_test.py` and prints pass/fail results.
 - Stops the API automatically.
+
+## One-time SQLite -> MySQL migration
+
+If you have historical data in a SQLite database and need to copy it once into MySQL:
+
+1. Ensure MySQL target schema is available by starting the app once against your MySQL URL.
+2. Run a dry-run to verify row counts:
+
+```bash
+cd backend
+python scripts/migrate_sqlite_to_mysql.py \
+  --source sqlite:////absolute/path/to/monitor.db \
+  --target "mysql+pymysql://<user>:<password>@<host>:3306/<database>?charset=utf8mb4" \
+  --dry-run
+```
+
+3. Run the actual migration (default behavior truncates target tables before copy):
+
+```bash
+cd backend
+python scripts/migrate_sqlite_to_mysql.py \
+  --source sqlite:////absolute/path/to/monitor.db \
+  --target "mysql+pymysql://<user>:<password>@<host>:3306/<database>?charset=utf8mb4"
+```
+
+Optional flags:
+
+- `--no-truncate` to append without clearing target tables first.
+- `--batch-size 1000` to tune insert batching.
 
 ## API usage docs
 

@@ -1,6 +1,6 @@
 # SherMon (MVP)
 
-Real-time monitoring service for Xstore incidents.
+Real-time monitoring service for SherMon incidents.
 
 ## What is implemented
 
@@ -22,6 +22,12 @@ From `deploy` directory:
 docker compose up
 ```
 
+This starts three services:
+
+- `mysql` (persistent local MySQL)
+- `api` (FastAPI on MySQL)
+- `dashboard` (frontend)
+
 Then open:
 
 - Dashboard: http://localhost:8080
@@ -40,7 +46,7 @@ MySQL deployment uses a pollinghandler-style pattern:
 Required runtime env for deployment:
 
 - `MONITOR_API_KEY` (must be set; app returns 503 on auth endpoints if missing)
-- `MONITOR_DATABASE_URL=mysql+pymysql://<user>:<password>@xstore-monitor-db:3306/<database>?charset=utf8mb4`
+- `MONITOR_DATABASE_URL=mysql+pymysql://<user>:<password>@shermon-db:3306/<database>?charset=utf8mb4`
 
 Recommended first-release constraints:
 
@@ -58,8 +64,8 @@ sh ./docker_build.sh
 
 1. Edit deployment template:
 
-- Set image name in `deploy/rancher-mysql-single-image.yaml` (`docker.artifactory.sherwin.com/tag-pos/xstore-monitor:latest`).
-- Set ingress host in `deploy/rancher-mysql-single-image.yaml` (`xstore-monitor.example.com`).
+- Set image name in `deploy/rancher-mysql-single-image.yaml` (`docker.artifactory.sherwin.com/tag-pos/shermon:latest`).
+- Set ingress host in `deploy/rancher-mysql-single-image.yaml` (`shermon.example.com`).
 - Set `MONITOR_CORS_ALLOW_ORIGINS` to your deployed HTTPS origin.
 
 2. Edit the secret file (never commit this to git):
@@ -88,7 +94,7 @@ Quick checklist:
 4. Build and push image (example):
 
 ```bash
-IMAGE_NAME=xstore-monitor IMAGE_TAG=v1 REGISTRY_IMAGE=docker.artifactory.sherwin.com/tag-pos/xstore-monitor sh ./docker_build.sh
+IMAGE_NAME=shermon IMAGE_TAG=v1 REGISTRY_IMAGE=docker.artifactory.sherwin.com/tag-pos/shermon sh ./docker_build.sh
 ```
 
 5. Apply first deployment (secret first, then main manifest):
@@ -96,23 +102,23 @@ IMAGE_NAME=xstore-monitor IMAGE_TAG=v1 REGISTRY_IMAGE=docker.artifactory.sherwin
 ```bash
 kubectl apply -f deploy/rancher-secret.yaml
 kubectl apply -f deploy/rancher-mysql-single-image.yaml
-kubectl -n xstore-monitor rollout status deploy/xstore-monitor
-kubectl -n xstore-monitor rollout status deploy/xstore-monitor-db
+kubectl -n shermon rollout status deploy/shermon
+kubectl -n shermon rollout status deploy/shermon-db
 ```
 
 6. Update to a new image tag:
 
 ```bash
-kubectl -n xstore-monitor set image deploy/xstore-monitor app=docker.artifactory.sherwin.com/tag-pos/xstore-monitor:v2
-kubectl -n xstore-monitor rollout status deploy/xstore-monitor
+kubectl -n shermon set image deploy/shermon app=docker.artifactory.sherwin.com/tag-pos/shermon:v2
+kubectl -n shermon rollout status deploy/shermon
 ```
 
 7. Check runtime state:
 
 ```bash
-kubectl -n xstore-monitor get pods,svc,ingress,pvc
-kubectl -n xstore-monitor logs deploy/xstore-monitor --tail=200
-kubectl -n xstore-monitor logs deploy/xstore-monitor-db --tail=200
+kubectl -n shermon get pods,svc,ingress,pvc
+kubectl -n shermon logs deploy/shermon --tail=200
+kubectl -n shermon logs deploy/shermon-db --tail=200
 ```
 
 ## Send test event
@@ -130,7 +136,7 @@ curl -X POST "http://localhost:8000/api/v1/events" \
     "event_type": "problem",
     "severity": "critical",
     "message": "Gateway timeout after 2 retries",
-    "source": "xstore-pos",
+    "source": "test-sender",
     "happened_at": "2026-03-20T15:11:00Z",
     "metadata": {"terminal_id": "lane-3"}
   }'
@@ -151,6 +157,35 @@ What it does:
 - Uses an isolated temporary SQLite database for the run (local test only; Rancher deploy targets MySQL).
 - Runs `tests/smoke_test.py` and prints pass/fail results.
 - Stops the API automatically.
+
+## One-time SQLite -> MySQL migration
+
+If you have historical data in a SQLite database and need to copy it once into MySQL:
+
+1. Ensure MySQL target schema is available by starting the app once against your MySQL URL.
+2. Run a dry-run to verify row counts:
+
+```bash
+cd backend
+python scripts/migrate_sqlite_to_mysql.py \
+  --source sqlite:////absolute/path/to/monitor.db \
+  --target "mysql+pymysql://<user>:<password>@<host>:3306/<database>?charset=utf8mb4" \
+  --dry-run
+```
+
+3. Run the actual migration (default behavior truncates target tables before copy):
+
+```bash
+cd backend
+python scripts/migrate_sqlite_to_mysql.py \
+  --source sqlite:////absolute/path/to/monitor.db \
+  --target "mysql+pymysql://<user>:<password>@<host>:3306/<database>?charset=utf8mb4"
+```
+
+Optional flags:
+
+- `--no-truncate` to append without clearing target tables first.
+- `--batch-size 1000` to tune insert batching.
 
 ## API usage docs
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-IMAGE_NAME="${IMAGE_NAME:-xstore-monitor}"
+IMAGE_NAME="${IMAGE_NAME:-shermon}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 REGISTRY_IMAGE="${REGISTRY_IMAGE:-}"
 
