@@ -1,14 +1,32 @@
 # Local development only. Do not use this compose file as a production/Rancher deployment template.
 services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root-password
+      MYSQL_DATABASE: shermon
+      MYSQL_USER: shermon
+      MYSQL_PASSWORD: shermon_password
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot-password"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   api:
     image: python:3.12-slim
     working_dir: /app
     volumes:
       - ../backend:/app
     command: sh -c "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
     environment:
       MONITOR_API_KEY: dev-monitor-key
-      MONITOR_DATABASE_URL: sqlite:///./monitor.db
+      MONITOR_DATABASE_URL: mysql+pymysql://shermon:shermon_password@mysql:3306/shermon?charset=utf8mb4
     ports:
       - "8000:8000"
 
@@ -18,3 +36,6 @@ services:
       - ../frontend:/usr/share/nginx/html:ro
     ports:
       - "8080:80"
+
+volumes:
+  mysql-data:

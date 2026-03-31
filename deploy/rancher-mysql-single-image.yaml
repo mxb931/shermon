@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: xstore-monitor
+  name: shermon
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: xstore-monitor-mysql-pvc
-  namespace: xstore-monitor
+  name: shermon-mysql-pvc
+  namespace: shermon
 spec:
   volumeMode: Filesystem
   # Match pollinghandler-db style; tune this for your cluster if needed.
@@ -21,21 +21,21 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: xstore-monitor-db
-  namespace: xstore-monitor
+  name: shermon-db
+  namespace: shermon
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: xstore-monitor-db
+      app: shermon-db
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app: xstore-monitor-db
-        app.kubernetes.io/name: xstore-monitor-db
-        app.kubernetes.io/instance: xstore-monitor-db
+        app: shermon-db
+        app.kubernetes.io/name: shermon-db
+        app.kubernetes.io/instance: shermon-db
     spec:
       containers:
         - name: mysql
@@ -45,22 +45,22 @@ spec:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: xstore-monitor-secrets
+                  name: shermon-secrets
                   key: MYSQL_ROOT_PASSWORD
             - name: MYSQL_DATABASE
               valueFrom:
                 secretKeyRef:
-                  name: xstore-monitor-secrets
+                  name: shermon-secrets
                   key: MYSQL_DATABASE
             - name: MYSQL_USER
               valueFrom:
                 secretKeyRef:
-                  name: xstore-monitor-secrets
+                  name: shermon-secrets
                   key: MYSQL_USER
             - name: MYSQL_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: xstore-monitor-secrets
+                  name: shermon-secrets
                   key: MYSQL_PASSWORD
           ports:
             - containerPort: 3306
@@ -78,16 +78,16 @@ spec:
       volumes:
         - name: mysql-data
           persistentVolumeClaim:
-            claimName: xstore-monitor-mysql-pvc
+            claimName: shermon-mysql-pvc
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: xstore-monitor-db
-  namespace: xstore-monitor
+  name: shermon-db
+  namespace: shermon
 spec:
   selector:
-    app: xstore-monitor-db
+    app: shermon-db
   ports:
     - name: mysql
       port: 3306
@@ -96,24 +96,24 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: xstore-monitor
-  namespace: xstore-monitor
+  name: shermon
+  namespace: shermon
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: xstore-monitor
+      app: shermon
   template:
     metadata:
       labels:
-        app: xstore-monitor
+        app: shermon
     spec:
       # Optional: uncomment if your registry requires credentials.
       # imagePullSecrets:
       #   - name: your-registry-pull-secret
       containers:
         - name: app
-          image: docker.artifactory.sherwin.com/tag-pos/xstore-monitor:latest
+          image: docker.artifactory.sherwin.com/tag-pos/shermon:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
@@ -121,17 +121,17 @@ spec:
             - name: MONITOR_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: xstore-monitor-secrets
+                  name: shermon-secrets
                   key: MONITOR_API_KEY
             - name: MONITOR_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: xstore-monitor-secrets
+                  name: shermon-secrets
                   key: MONITOR_DATABASE_URL
             - name: MONITOR_LOG_DIR
               value: /tmp/shermon/logs
             - name: MONITOR_CORS_ALLOW_ORIGINS
-              value: https://xstore-monitor.example.com
+              value: https://shermon.example.com
           livenessProbe:
             httpGet:
               path: /health
@@ -159,11 +159,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: xstore-monitor
-  namespace: xstore-monitor
+  name: shermon
+  namespace: shermon
 spec:
   selector:
-    app: xstore-monitor
+    app: shermon
   ports:
     - name: http
       port: 80
@@ -172,8 +172,8 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: xstore-monitor
-  namespace: xstore-monitor
+  name: shermon
+  namespace: shermon
   annotations:
     # Keep websocket connections stable.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
@@ -183,16 +183,16 @@ spec:
   # Optional: uncomment once TLS secret exists.
   # tls:
   #   - hosts:
-  #       - xstore-monitor.example.com
-  #     secretName: xstore-monitor-tls
+  #       - shermon.example.com
+  #     secretName: shermon-tls
   rules:
-    - host: xstore-monitor.example.com
+    - host: shermon.example.com
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: xstore-monitor
+                name: shermon
                 port:
                   number: 80
