@@ -2,6 +2,30 @@
 
 Real-time monitoring service for SherMon incidents.
 
+## Deployment Snapshot (For Managers)
+
+- Deployment target: Rancher (namespace `shermon`)
+- Runtime database: MySQL (`shermon-db` service)
+- App image: `docker.artifactory.sherwin.com/tag-pos/shermon:<tag>`
+- Public URL: your ingress host (example `https://shermon.example.com`)
+- Secrets: maintained in `deploy/rancher-secret.yaml` (never commit live values)
+
+## What Your Architect Needs
+
+1. Final ingress hostname and TLS secret name.
+2. Final image tag to deploy.
+3. Confirmed storage class for MySQL PVC (default in manifest is `longhorn`).
+4. Final secret values for API key and MySQL credentials.
+5. Decision: use in-manifest MySQL or point app to an existing shared MySQL.
+
+## 5-Minute Deploy Checklist
+
+1. Update host/CORS/image in `deploy/rancher-mysql-single-image.yaml`.
+2. Fill `deploy/rancher-secret.yaml` values.
+3. Apply `deploy/rancher-secret.yaml`.
+4. Apply `deploy/rancher-mysql-single-image.yaml`.
+5. Verify rollout and smoke test ingest + UI websocket status.
+
 ## What is implemented
 
 - FastAPI backend with authenticated ingest endpoint.
