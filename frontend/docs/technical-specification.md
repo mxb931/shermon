@@ -7,9 +7,9 @@ SherMon is a lightweight monitoring platform for Xstore operations. It ingests i
 ## High-Level Architecture
 
 - Backend API service: FastAPI app exposing REST and WebSocket endpoints.
-- Persistence layer: SQLite database accessed through SQLAlchemy ORM.
+- Persistence layer: MySQL database accessed through SQLAlchemy ORM.
 - Frontend dashboard: static multi-page HTML/CSS/JavaScript application.
-- Deployment shell: Docker Compose orchestration for API and static UI.
+- Deployment shell: Docker Compose orchestration for MySQL, API, and static UI.
 - Integration helper: Java client class for posting events from Xstore-adjacent systems.
 
 ## Technology Stack And Rationale
@@ -21,8 +21,9 @@ SherMon is a lightweight monitoring platform for Xstore operations. It ingests i
 | Uvicorn (`0.34.0`) | ASGI server runtime | Lightweight, production-proven ASGI server that pairs directly with FastAPI. |
 | Pydantic (`2.10.6`) | Request/response schemas and validation | Declarative input validation and schema-driven contracts reduce invalid payload risk. |
 | SQLAlchemy (`2.0.39`) | Data access and ORM models | Clear domain modeling with portable SQL/query support and transaction control. |
-| SQLite | Primary data store (MVP) | Zero-ops local persistence, easy setup for early-stage development, and fast iteration. |
-| Raw SQL migration hooks | Schema compatibility in startup lifecycle | Enables incremental schema evolution for existing local DBs without external migration tooling in MVP. |
+| MySQL 8 | Primary runtime data store | Aligns with Rancher deployment model and existing persistent DB operating patterns. |
+| SQLite | One-time migration source + smoke-test backing store | Preserves legacy dataset portability and fast isolated test execution. |
+| Raw SQL migration hooks | Schema compatibility in startup lifecycle | Enables incremental schema evolution for existing DBs without external migration tooling in MVP. |
 | WebSocket protocol | `/ws/updates` stream | Delivers low-latency push updates for incident/status/ack changes without polling overhead. |
 | Vanilla JavaScript (ES modules) | Frontend logic (`frontend/*.js`) | No build step required; keeps the UI stack simple and easy to debug in early stages. |
 | HTML5/CSS3 | Frontend UI (`frontend/*.html`, `frontend/styles.css`) | Straightforward static dashboard delivery and fast UI iteration. |
@@ -94,8 +95,9 @@ SherMon is a lightweight monitoring platform for Xstore operations. It ingests i
 ## Deployment and Operations
 
 - Compose services:
+  - `mysql`: MySQL 8 persistent database service
   - `api`: Python slim image running FastAPI via Uvicorn
-  - `dashboard`: Nginx serving static frontend files
+  - `dashboard`: Nginx serving static frontend files and proxying `/api/*` + `/ws/updates` to `api`
 - Config surface:
   - Environment variables for API key, DB URL, and limits.
 - Health and smoke verification:
@@ -105,9 +107,9 @@ SherMon is a lightweight monitoring platform for Xstore operations. It ingests i
 ## Design Tradeoffs
 
 - Chosen for MVP speed:
-  - SQLite and static frontend avoid operational overhead.
+  - MySQL + static frontend balances low UI complexity with deploy-ready persistence.
   - No frontend build pipeline reduces complexity.
 - Tradeoff accepted:
-  - Limited horizontal scaling and migration sophistication compared with a production-grade Postgres + managed migration framework setup.
+  - Single app replica and in-process websocket fan-out limit horizontal scaling.
 - Planned growth path:
-  - Move to PostgreSQL and stronger migration strategy as data volume and deployment complexity increase.
+  - Add managed migration tooling and optional external DB service as deployment complexity increases.

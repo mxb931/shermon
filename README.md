@@ -26,12 +26,12 @@ This starts three services:
 
 - `mysql` (persistent local MySQL)
 - `api` (FastAPI on MySQL)
-- `dashboard` (frontend)
+- `dashboard` (frontend + local reverse proxy for `/api/*` and `/ws/updates`)
 
 Then open:
 
 - Dashboard: http://localhost:8080
-- API docs: http://localhost:8000/docs
+- API docs (backend): http://localhost:8000/docs
 - OpenAPI Swagger UI (frontend): http://localhost:8080/api-swagger.html
 
 ## Rancher deployment (MySQL persistent)

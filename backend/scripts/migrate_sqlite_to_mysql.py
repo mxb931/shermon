@@ -4,12 +4,12 @@
 Usage examples:
   python scripts/migrate_sqlite_to_mysql.py \
     --source sqlite:////absolute/path/to/monitor.db \
-    --target mysql+pymysql://user:pass@host:3306/xstore_monitor?charset=utf8mb4 \
+        --target mysql+pymysql://user:pass@host:3306/shermon?charset=utf8mb4 \
     --dry-run
 
   python scripts/migrate_sqlite_to_mysql.py \
     --source sqlite:////absolute/path/to/monitor.db \
-    --target mysql+pymysql://user:pass@host:3306/xstore_monitor?charset=utf8mb4
+        --target mysql+pymysql://user:pass@host:3306/shermon?charset=utf8mb4
 """
 
 from __future__ import annotations
