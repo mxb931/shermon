@@ -166,6 +166,20 @@ curl -X POST "http://localhost:8000/api/v1/events" \
   }'
 ```
 
+## One-line local startup
+
+Run this from the repository root:
+
+```bash
+./scripts/start_server.sh
+```
+
+Optional environment overrides:
+
+```bash
+HOST=127.0.0.1 PORT=9000 ./scripts/start_server.sh
+```
+
 ## One-command smoke test
 
 Run this from the backend directory:
